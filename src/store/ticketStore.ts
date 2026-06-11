@@ -1,0 +1,232 @@
+import { create } from 'zustand'
+import type { Ticket, TicketRecord, TicketStatus, TicketPriority, TicketCategory } from '@/types'
+import { MOCK_TICKETS, MOCK_RECORDS } from '@/utils/mockData'
+import { getSLADeadline } from '@/utils/slaUtils'
+import { saveToStorage, loadFromStorage } from '@/utils/storage'
+
+interface TicketState {
+  tickets: Ticket[]
+  records: TicketRecord[]
+  nextId: number
+  initialize: () => void
+  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status'>) => Ticket
+  updateTicket: (id: string, updates: Partial<Ticket>) => void
+  assignTicket: (id: string, assigneeId: string, operatorId: string) => void
+  changeStatus: (id: string, status: TicketStatus, operatorId: string, content: string) => void
+  addRecord: (ticketId: string, operatorId: string, action: string, content: string) => void
+  getTicketById: (id: string) => Ticket | undefined
+  getRecordsByTicketId: (id: string) => TicketRecord[]
+  getFilteredTickets: (filters: TicketFilters) => Ticket[]
+  getStats: () => {
+    totalCount: number
+    pendingCount: number
+    inProgressCount: number
+    closedCount: number
+    thisMonthCreated: number
+    thisMonthClosed: number
+    avgResolutionTime: string
+    slaComplianceRate: string
+  }
+}
+
+export interface TicketFilters {
+  status?: TicketStatus
+  priority?: TicketPriority
+  category?: TicketCategory
+  search?: string
+}
+
+const STORAGE_KEY_TICKETS = 'tickets'
+const STORAGE_KEY_RECORDS = 'records'
+const STORAGE_KEY_NEXT_ID = 'next_id'
+
+export const useTicketStore = create<TicketState>((set, get) => ({
+  tickets: MOCK_TICKETS,
+  records: MOCK_RECORDS,
+  nextId: 13,
+
+  initialize: () => {
+    const savedTickets = loadFromStorage<Ticket[]>(STORAGE_KEY_TICKETS)
+    const savedRecords = loadFromStorage<TicketRecord[]>(STORAGE_KEY_RECORDS)
+    const savedNextId = loadFromStorage<number>(STORAGE_KEY_NEXT_ID)
+    if (savedTickets) set({ tickets: savedTickets })
+    if (savedRecords) set({ records: savedRecords })
+    if (savedNextId) set({ nextId: savedNextId })
+  },
+
+  addTicket: (ticketData) => {
+    const { nextId } = get()
+    const id = `TK-${String(nextId).padStart(3, '0')}`
+    const now = new Date().toISOString()
+    const newTicket: Ticket = {
+      ...ticketData,
+      id,
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+      slaDeadline: getSLADeadline(ticketData.priority, now),
+    }
+    const newRecord: TicketRecord = {
+      id: `r_${Date.now()}`,
+      ticketId: id,
+      operatorId: ticketData.creatorId,
+      action: 'created',
+      content: '创建工单',
+      createdAt: now,
+    }
+    set((state) => {
+      const tickets = [newTicket, ...state.tickets]
+      const records = [newRecord, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      saveToStorage(STORAGE_KEY_NEXT_ID, nextId + 1)
+      return { tickets, records, nextId: nextId + 1 }
+    })
+    return newTicket
+  },
+
+  updateTicket: (id, updates) => {
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
+      )
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      return { tickets }
+    })
+  },
+
+  assignTicket: (id, assigneeId, operatorId) => {
+    const now = new Date().toISOString()
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        t.id === id ? { ...t, assigneeId, status: 'assigned' as TicketStatus, updatedAt: now } : t
+      )
+      const record: TicketRecord = {
+        id: `r_${Date.now()}`,
+        ticketId: id,
+        operatorId,
+        action: 'assigned',
+        content: `分配处理人`,
+        createdAt: now,
+      }
+      const records = [record, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+  },
+
+  changeStatus: (id, status, operatorId, content) => {
+    const now = new Date().toISOString()
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        t.id === id ? { ...t, status, updatedAt: now } : t
+      )
+      const record: TicketRecord = {
+        id: `r_${Date.now()}`,
+        ticketId: id,
+        operatorId,
+        action: 'status_changed',
+        content,
+        createdAt: now,
+      }
+      const records = [record, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+  },
+
+  addRecord: (ticketId, operatorId, action, content) => {
+    const now = new Date().toISOString()
+    set((state) => {
+      const record: TicketRecord = {
+        id: `r_${Date.now()}`,
+        ticketId,
+        operatorId,
+        action,
+        content,
+        createdAt: now,
+      }
+      const records = [record, ...state.records]
+      const tickets = state.tickets.map(t =>
+        t.id === ticketId ? { ...t, updatedAt: now } : t
+      )
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      return { records, tickets }
+    })
+  },
+
+  getTicketById: (id) => {
+    return get().tickets.find(t => t.id === id)
+  },
+
+  getRecordsByTicketId: (id) => {
+    return get().records.filter(r => r.ticketId === id).sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+  },
+
+  getFilteredTickets: (filters) => {
+    return get().tickets.filter(t => {
+      if (filters.status && t.status !== filters.status) return false
+      if (filters.priority && t.priority !== filters.priority) return false
+      if (filters.category && t.category !== filters.category) return false
+      if (filters.search) {
+        const s = filters.search.toLowerCase()
+        return t.title.toLowerCase().includes(s) || t.id.toLowerCase().includes(s)
+      }
+      return true
+    })
+  },
+
+  getStats: () => {
+    const { tickets } = get()
+    const totalCount = tickets.length
+    const pendingCount = tickets.filter(t => t.status === 'pending' || t.status === 'assigned').length
+    const inProgressCount = tickets.filter(t => t.status === 'in_progress').length
+    const closedCount = tickets.filter(t => t.status === 'closed').length
+
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const thisMonthCreated = tickets.filter(t => new Date(t.createdAt) >= startOfMonth).length
+    const thisMonthClosed = tickets.filter(t =>
+      t.status === 'closed' && new Date(t.updatedAt) >= startOfMonth
+    ).length
+
+    const resolved = tickets.filter(t => t.status === 'closed' || t.status === 'rejected')
+    let avgResolutionTime = '-'
+    if (resolved.length > 0) {
+      const totalHours = resolved.reduce((sum, t) => {
+        const hours = (new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime()) / 3600000
+        return sum + Math.max(0, hours)
+      }, 0)
+      const avg = totalHours / resolved.length
+      if (avg < 1) {
+        avgResolutionTime = `${Math.round(avg * 60)}分钟`
+      } else if (avg < 24) {
+        avgResolutionTime = `${avg.toFixed(1)}小时`
+      } else {
+        avgResolutionTime = `${(avg / 24).toFixed(1)}天`
+      }
+    }
+
+    let slaComplianceRate = '100%'
+    if (resolved.length > 0) {
+      const onTime = resolved.filter(t => new Date(t.updatedAt) <= new Date(t.slaDeadline))
+      slaComplianceRate = `${Math.round((onTime.length / resolved.length) * 100)}%`
+    }
+
+    return {
+      totalCount,
+      pendingCount,
+      inProgressCount,
+      closedCount,
+      thisMonthCreated,
+      thisMonthClosed,
+      avgResolutionTime,
+      slaComplianceRate,
+    }
+  },
+}))
