@@ -130,3 +130,17 @@ export const IMPORT_TEMPLATE_HEADERS = [
 
 export const CATEGORY_VALUES = ['network', 'hardware', 'software', 'security', 'access', 'other']
 export const PRIORITY_VALUES = ['critical', 'high', 'medium', 'low']
+
+export interface TicketTemplate {
+  id: string
+  name: string
+  description: string
+  category: TicketCategory
+  priority: TicketPriority
+  title: string
+  descriptionContent: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  creatorId: string
+}

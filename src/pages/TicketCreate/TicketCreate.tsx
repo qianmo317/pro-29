@@ -18,13 +18,21 @@ import {
   FormErrorMessage,
   Badge,
   useToast,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverHeader,
+  PopoverBody,
+  PopoverArrow,
+  Stack,
 } from '@chakra-ui/react'
-import { ArrowLeft, Send, BookOpen } from 'lucide-react'
+import { ArrowLeft, Send, BookOpen, FileText, ChevronDown } from 'lucide-react'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
 import { useKnowledgeStore } from '@/store/knowledgeStore'
-import { CATEGORY_LABELS, PRIORITY_LABELS } from '@/types'
-import { type TicketCategory, type TicketPriority } from '@/types'
+import { useTemplateStore } from '@/store/templateStore'
+import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS } from '@/types'
+import { type TicketCategory, type TicketPriority, type TicketTemplate } from '@/types'
 
 export default function TicketCreate() {
   const navigate = useNavigate()
@@ -33,6 +41,7 @@ export default function TicketCreate() {
   const users = useUserStore((s) => s.users)
   const currentUser = useUserStore((s) => s.currentUser)
   const searchArticles = useKnowledgeStore((s) => s.searchArticles)
+  const activeTemplates = useTemplateStore((s) => s.getActiveTemplates())
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -40,15 +49,38 @@ export default function TicketCreate() {
   const [priority, setPriority] = useState<TicketPriority>('medium')
   const [assigneeId, setAssigneeId] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<TicketTemplate | null>(null)
 
   const agents = useMemo(() => users.filter((u) => u.role === 'agent'), [users])
-
-  if (!currentUser) return null
-
   const recommendedArticles = useMemo(() => {
     if (!title.trim()) return []
     return searchArticles(title).slice(0, 3)
   }, [title, searchArticles])
+
+  const handleSelectTemplate = (template: TicketTemplate) => {
+    setSelectedTemplate(template)
+    setTitle(template.title)
+    setDescription(template.descriptionContent)
+    setCategory(template.category)
+    setPriority(template.priority)
+    toast({
+      title: '模板已应用',
+      description: `已应用模板「${template.name}」，请根据实际情况调整内容`,
+      status: 'success',
+      duration: 2000,
+      isClosable: true,
+    })
+  }
+
+  const handleClearTemplate = () => {
+    setSelectedTemplate(null)
+    setTitle('')
+    setDescription('')
+    setCategory('software')
+    setPriority('medium')
+  }
+
+  if (!currentUser) return null
 
   const titleError = submitted && !title.trim() ? '请输入工单标题' : ''
   const descriptionError = submitted
@@ -102,6 +134,84 @@ export default function TicketCreate() {
         <Card>
           <CardBody>
             <VStack spacing={5} align="stretch">
+              {activeTemplates.length > 0 && (
+                <FormControl>
+                  <FormLabel>选择模板</FormLabel>
+                  <Popover placement="bottom-start" trigger="click">
+                    <PopoverTrigger>
+                      <Button
+                        w="100%"
+                        variant="outline"
+                        rightIcon={<ChevronDown size={16} />}
+                        leftIcon={<FileText size={16} color="#6C5CE7" />}
+                        justifyContent="flex-start"
+                        fontWeight="normal"
+                        color={selectedTemplate ? 'gray.800' : 'gray.500'}
+                      >
+                        {selectedTemplate ? selectedTemplate.name : '点击选择模板（可选）'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent w="400px">
+                      <PopoverArrow />
+                      <PopoverHeader fontWeight="600">常用工单模板</PopoverHeader>
+                      <PopoverBody p={2}>
+                        <Stack spacing={2}>
+                          {activeTemplates.map((template) => (
+                            <Box
+                              key={template.id}
+                              p={3}
+                              borderRadius="8px"
+                              cursor="pointer"
+                              bg={selectedTemplate?.id === template.id ? 'brand.50' : 'gray.50'}
+                              border={selectedTemplate?.id === template.id ? '1px solid' : '1px solid transparent'}
+                              borderColor="brand.300"
+                              _hover={{ bg: 'brand.50' }}
+                              onClick={() => handleSelectTemplate(template)}
+                              transition="all 0.2s"
+                            >
+                              <HStack justify="space-between" mb={1}>
+                                <Text fontWeight="500" fontSize="sm">{template.name}</Text>
+                                <HStack spacing={1}>
+                                  <Badge colorScheme="brand" variant="subtle" fontSize="xs">
+                                    {CATEGORY_LABELS[template.category]}
+                                  </Badge>
+                                  <Badge
+                                    color="white"
+                                    bg={PRIORITY_COLORS[template.priority]}
+                                    fontSize="xs"
+                                    variant="solid"
+                                  >
+                                    {PRIORITY_LABELS[template.priority]}
+                                  </Badge>
+                                </HStack>
+                              </HStack>
+                              <Text fontSize="xs" color="gray.500" noOfLines={2}>
+                                {template.description}
+                              </Text>
+                            </Box>
+                          ))}
+                        </Stack>
+                      </PopoverBody>
+                    </PopoverContent>
+                  </Popover>
+                  {selectedTemplate && (
+                    <HStack mt={2} spacing={2}>
+                      <Text fontSize="xs" color="brand.600">
+                        已应用模板：{selectedTemplate.name}
+                      </Text>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={handleClearTemplate}
+                        color="gray.500"
+                      >
+                        清除
+                      </Button>
+                    </HStack>
+                  )}
+                </FormControl>
+              )}
+
               <FormControl isInvalid={!!titleError}>
                 <FormLabel>标题</FormLabel>
                 <Input

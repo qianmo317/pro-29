@@ -8,20 +8,24 @@ import TicketList from '@/pages/TicketList/TicketList'
 import TicketDetail from '@/pages/TicketDetail/TicketDetail'
 import TicketCreate from '@/pages/TicketCreate/TicketCreate'
 import TicketImport from '@/pages/TicketImport/TicketImport'
+import TemplateManage from '@/pages/TemplateManage/TemplateManage'
 import KnowledgeList from '@/pages/Knowledge/KnowledgeList'
 import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail'
 import Reports from '@/pages/Reports/Reports'
 import { useUserStore } from '@/store/userStore'
 import { useTicketStore } from '@/store/ticketStore'
+import { useTemplateStore } from '@/store/templateStore'
 
 export default function App() {
   const initAuth = useUserStore((s) => s.initAuth)
   const initTickets = useTicketStore((s) => s.initialize)
+  const initTemplates = useTemplateStore((s) => s.initialize)
 
   useEffect(() => {
     initAuth()
     initTickets()
-  }, [initAuth, initTickets])
+    initTemplates()
+  }, [initAuth, initTickets, initTemplates])
 
   return (
     <Router>
@@ -41,6 +45,7 @@ export default function App() {
           <Route path="tickets/create" element={<TicketCreate />} />
           <Route path="tickets/import" element={<TicketImport />} />
           <Route path="tickets/:id" element={<TicketDetail />} />
+          <Route path="templates" element={<TemplateManage />} />
           <Route path="knowledge" element={<KnowledgeList />} />
           <Route path="knowledge/:id" element={<KnowledgeDetail />} />
           <Route path="reports" element={<Reports />} />

@@ -1,13 +1,14 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Box, VStack, HStack, Text, Icon } from '@chakra-ui/react'
-import { LayoutDashboard, TicketCheck, BookOpen, BarChart3, User } from 'lucide-react'
+import { LayoutDashboard, TicketCheck, BookOpen, BarChart3, User, FileText } from 'lucide-react'
 import { useUserStore } from '@/store/userStore'
 
 const NAV_ITEMS = [
-  { label: '仪表盘', icon: LayoutDashboard, path: '/dashboard' },
-  { label: '工单管理', icon: TicketCheck, path: '/tickets' },
-  { label: '知识库', icon: BookOpen, path: '/knowledge' },
-  { label: '报表统计', icon: BarChart3, path: '/reports' },
+  { label: '仪表盘', icon: LayoutDashboard, path: '/dashboard', roles: ['admin', 'agent', 'submitter'] },
+  { label: '工单管理', icon: TicketCheck, path: '/tickets', roles: ['admin', 'agent', 'submitter'] },
+  { label: '模板管理', icon: FileText, path: '/templates', roles: ['admin'] },
+  { label: '知识库', icon: BookOpen, path: '/knowledge', roles: ['admin', 'agent', 'submitter'] },
+  { label: '报表统计', icon: BarChart3, path: '/reports', roles: ['admin', 'agent'] },
 ]
 
 const ROLE_LABELS: Record<string, string> = {
@@ -57,7 +58,7 @@ export default function Sidebar() {
       </VStack>
 
       <VStack spacing={2} flex={1}>
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => item.roles.includes(currentUser.role)).map((item) => {
           const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/')
           return (
             <HStack

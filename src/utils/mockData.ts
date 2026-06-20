@@ -1,4 +1,4 @@
-import type { User, Ticket, TicketRecord, KnowledgeArticle, SLAConfig } from '@/types'
+import type { User, Ticket, TicketRecord, KnowledgeArticle, SLAConfig, TicketTemplate } from '@/types'
 
 export const MOCK_USERS: User[] = [
   { id: 'u1', name: '张管理', role: 'admin', avatar: '', email: 'admin@company.com', password: 'admin123' },
@@ -265,4 +265,190 @@ export const MOCK_SLA_CONFIGS: SLAConfig[] = [
   { id: 'sla2', category: 'all', priority: 'high', responseHours: 2, resolutionHours: 8 },
   { id: 'sla3', category: 'all', priority: 'medium', responseHours: 4, resolutionHours: 24 },
   { id: 'sla4', category: 'all', priority: 'low', responseHours: 8, resolutionHours: 48 },
+]
+
+export const MOCK_TEMPLATES: TicketTemplate[] = [
+  {
+    id: 'tpl-001',
+    name: '新员工入职权限申请',
+    description: '新员工入职时统一使用的权限申请模板',
+    category: 'access',
+    priority: 'medium',
+    title: '新员工【姓名】入职权限申请',
+    descriptionContent:
+`员工姓名：
+员工工号：
+所属部门：
+入职日期：
+
+需要开通的权限：
+□ 域账号（AD）
+□ 邮箱账号
+□ WiFi账号
+□ OA系统
+□ 考勤系统
+□ 内部Wiki
+□ CRM系统
+□ VPN
+□ GitLab
+□ Jenkins
+□ SAP
+□ 其他：________
+
+部门负责人审批：
+
+备注：`,
+    isActive: true,
+    createdAt: h(720),
+    updatedAt: h(720),
+    creatorId: 'u1',
+  },
+  {
+    id: 'tpl-002',
+    name: '设备报修申请',
+    description: '办公设备故障报修使用',
+    category: 'hardware',
+    priority: 'medium',
+    title: '【设备类型】故障报修 - 【位置】',
+    descriptionContent:
+`设备类型：
+□ 台式电脑
+□ 笔记本电脑
+□ 打印机
+□ 显示器
+□ 键盘/鼠标
+□ 电话
+□ 其他：________
+
+设备编号（如有）：
+所在位置：
+使用人：
+
+故障现象描述：
+
+是否紧急：
+□ 是（影响正常工作）
+□ 否（可正常使用）
+
+期望处理时间：
+
+备注：`,
+    isActive: true,
+    createdAt: h(600),
+    updatedAt: h(600),
+    creatorId: 'u1',
+  },
+  {
+    id: 'tpl-003',
+    name: '网络问题反馈',
+    description: '网络连接、WiFi、VPN等问题',
+    category: 'network',
+    priority: 'medium',
+    title: '网络问题反馈 - 【问题类型】',
+    descriptionContent:
+`问题类型：
+□ WiFi无法连接
+□ WiFi信号弱
+□ 有线网络不通
+□ VPN无法连接
+□ VPN频繁断开
+□ 网络速度慢
+□ 特定网站无法访问
+□ 其他：________
+
+发生位置：
+涉及设备数量：
+
+问题描述：
+
+开始时间：
+是否可以复现：
+□ 每次都出现
+□ 偶尔出现
+□ 特定时间出现
+
+已尝试的解决方法：
+
+备注：`,
+    isActive: true,
+    createdAt: h(480),
+    updatedAt: h(480),
+    creatorId: 'u1',
+  },
+  {
+    id: 'tpl-004',
+    name: '软件安装/使用问题',
+    description: '软件安装、配置、使用相关问题',
+    category: 'software',
+    priority: 'low',
+    title: '【软件名称】安装/使用问题',
+    descriptionContent:
+`软件名称：
+软件版本（如有）：
+
+问题类型：
+□ 需要申请安装
+□ 安装失败
+□ 启动异常
+□ 功能使用问题
+□ 许可证激活
+□ 其他：________
+
+操作系统：
+□ Windows 10
+□ Windows 11
+□ macOS
+□ Linux
+□ 其他：________
+
+问题描述：
+
+错误截图（如有请附上）：
+
+已尝试的解决方法：
+
+备注：`,
+    isActive: true,
+    createdAt: h(360),
+    updatedAt: h(360),
+    creatorId: 'u1',
+  },
+  {
+    id: 'tpl-005',
+    name: '安全事件报告',
+    description: '安全漏洞、异常访问、数据泄露等安全事件',
+    category: 'security',
+    priority: 'high',
+    title: '【紧急】安全事件报告 - 【事件类型】',
+    descriptionContent:
+`事件类型：
+□ 账号被盗
+□ 异常登录
+□ 钓鱼邮件
+□ 数据泄露
+□ 系统漏洞
+□ 恶意软件
+□ 其他安全事件：________
+
+发生时间：
+影响范围：
+
+事件描述：
+
+涉及系统/数据：
+
+已采取的措施：
+
+是否需要紧急处理：
+□ 是（需要立即响应）
+□ 否（可按正常流程处理）
+
+联系人及电话：
+
+备注：`,
+    isActive: true,
+    createdAt: h(240),
+    updatedAt: h(120),
+    creatorId: 'u1',
+  },
 ]
