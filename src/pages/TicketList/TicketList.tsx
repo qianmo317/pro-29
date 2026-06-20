@@ -35,13 +35,22 @@ import {
   useToast,
   Badge,
 } from '@chakra-ui/react'
-import { Search, Plus, ChevronLeft, ChevronRight, Upload, Merge } from 'lucide-react'
+import { Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Upload, Merge } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import { PRIORITY_LABELS, PRIORITY_COLORS, CATEGORY_LABELS, STATUS_LABELS } from '@/types'
 import { type TicketStatus, type TicketPriority, type TicketCategory, type Ticket } from '@/types'
 
+type SortField = 'createdAt' | 'priority' | 'slaDeadline'
+type SortOrder = 'asc' | 'desc'
+
 const PAGE_SIZE = 10
+const PRIORITY_WEIGHT: Record<TicketPriority, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+}
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso)
@@ -64,9 +73,11 @@ export default function TicketList() {
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [mainTicketId, setMainTicketId] = useState('')
+  const [sortField, setSortField] = useState<SortField>('createdAt')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
 
   const filteredTickets = useMemo(() => {
-    return tickets.filter(t => {
+    const result = tickets.filter(t => {
       if (filters.status && t.status !== filters.status) return false
       if (filters.priority && t.priority !== filters.priority) return false
       if (filters.category && t.category !== filters.category) return false
@@ -76,7 +87,25 @@ export default function TicketList() {
       }
       return true
     })
-  }, [tickets, filters])
+
+    result.sort((a, b) => {
+      let comparison = 0
+      switch (sortField) {
+        case 'createdAt':
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          break
+        case 'priority':
+          comparison = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority]
+          break
+        case 'slaDeadline':
+          comparison = new Date(a.slaDeadline).getTime() - new Date(b.slaDeadline).getTime()
+          break
+      }
+      return sortOrder === 'asc' ? comparison : -comparison
+    })
+
+    return result
+  }, [tickets, filters, sortField, sortOrder])
 
   const totalPages = Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
@@ -93,6 +122,22 @@ export default function TicketList() {
   const updateFilter = <K extends keyof TicketFilters>(key: K, value: TicketFilters[K]) => {
     setFilters(prev => ({ ...prev, [key]: value || undefined }))
     setPage(1)
+  }
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortOrder('desc')
+    }
+  }
+
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ChevronUp size={14} opacity={0.3} />
+    }
+    return sortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
   }
 
   const toggleSelect = (id: string) => {
@@ -246,11 +291,41 @@ export default function TicketList() {
                   <Th>编号</Th>
                   <Th>标题</Th>
                   <Th>分类</Th>
-                  <Th>优先级</Th>
+                  <Th
+                    cursor="pointer"
+                    onClick={() => handleSort('priority')}
+                    userSelect="none"
+                    _hover={{ color: 'brand.600' }}
+                  >
+                    <HStack spacing={1}>
+                      <Text>优先级</Text>
+                      {renderSortIcon('priority')}
+                    </HStack>
+                  </Th>
                   <Th>状态</Th>
                   <Th>处理人</Th>
-                  <Th>创建时间</Th>
-                  <Th>SLA</Th>
+                  <Th
+                    cursor="pointer"
+                    onClick={() => handleSort('createdAt')}
+                    userSelect="none"
+                    _hover={{ color: 'brand.600' }}
+                  >
+                    <HStack spacing={1}>
+                      <Text>创建时间</Text>
+                      {renderSortIcon('createdAt')}
+                    </HStack>
+                  </Th>
+                  <Th
+                    cursor="pointer"
+                    onClick={() => handleSort('slaDeadline')}
+                    userSelect="none"
+                    _hover={{ color: 'brand.600' }}
+                  >
+                    <HStack spacing={1}>
+                      <Text>SLA</Text>
+                      {renderSortIcon('slaDeadline')}
+                    </HStack>
+                  </Th>
                 </Tr>
               </Thead>
               <Tbody>
