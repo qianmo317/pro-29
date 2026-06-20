@@ -9,10 +9,18 @@ import type {
   ImportResult,
   ImportResultItem,
 } from '@/types'
+import { CATEGORY_LABELS, PRIORITY_LABELS } from '@/types'
 import { MOCK_TICKETS, MOCK_RECORDS } from '@/utils/mockData'
 import { getSLADeadline } from '@/utils/slaUtils'
 import { saveToStorage, loadFromStorage } from '@/utils/storage'
 import { useNotificationStore } from './notificationStore'
+
+interface EditableTicketFields {
+  title: string
+  description: string
+  category: TicketCategory
+  priority: TicketPriority
+}
 
 interface TicketState {
   tickets: Ticket[]
@@ -21,6 +29,7 @@ interface TicketState {
   initialize: () => void
   addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds'>) => Ticket
   updateTicket: (id: string, updates: Partial<Ticket>) => void
+  editTicket: (id: string, updates: EditableTicketFields, operatorId: string) => void
   assignTicket: (id: string, assigneeId: string, operatorId: string) => void
   changeStatus: (id: string, status: TicketStatus, operatorId: string, content: string) => void
   addRecord: (ticketId: string, operatorId: string, action: string, content: string) => void
@@ -124,6 +133,49 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       saveToStorage(STORAGE_KEY_TICKETS, tickets)
       return { tickets }
     })
+  },
+
+  editTicket: (id, updates, operatorId) => {
+    const ticket = get().getTicketById(id)
+    if (!ticket || get().isTicketMerged(id)) return
+    const now = new Date().toISOString()
+
+    const changes: string[] = []
+    if (updates.title !== ticket.title) changes.push(`标题「${ticket.title}」→「${updates.title}」`)
+    if (updates.category !== ticket.category) changes.push(`分类「${CATEGORY_LABELS[ticket.category]}」→「${CATEGORY_LABELS[updates.category]}」`)
+    if (updates.priority !== ticket.priority) changes.push(`优先级「${PRIORITY_LABELS[ticket.priority]}」→「${PRIORITY_LABELS[updates.priority]}」`)
+    if (updates.description !== ticket.description) changes.push('描述已修改')
+
+    if (changes.length === 0) return
+
+    const record: TicketRecord = {
+      id: `r_${Date.now()}`,
+      ticketId: id,
+      operatorId,
+      action: 'edited',
+      content: `编辑工单：${changes.join('；')}`,
+      createdAt: now,
+    }
+
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        t.id === id
+          ? {
+              ...t,
+              title: updates.title,
+              description: updates.description,
+              category: updates.category,
+              priority: updates.priority,
+              updatedAt: now,
+            }
+          : t
+      )
+      const records = [record, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+    useNotificationStore.getState().createNotificationsForFollowers(id, record, operatorId)
   },
 
   assignTicket: (id, assigneeId, operatorId) => {

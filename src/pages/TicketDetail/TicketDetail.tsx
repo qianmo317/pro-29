@@ -31,12 +31,13 @@ import {
   Checkbox,
   Input,
 } from '@chakra-ui/react'
-import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff, Merge, ExternalLink } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff, Merge, ExternalLink, Pencil } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import Timeline from '@/components/Timeline/Timeline'
 import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS } from '@/types'
-import { type TicketStatus } from '@/types'
+import { type TicketStatus, type TicketCategory, type TicketPriority } from '@/types'
+import { FormControl, FormLabel, FormErrorMessage } from '@chakra-ui/react'
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso)
@@ -65,11 +66,18 @@ export default function TicketDetail() {
   const { users, currentUser } = useUserStore()
   const { isFollowing, followTicket, unfollowTicket } = useNotificationStore()
   const { isOpen, onOpen, onClose } = useDisclosure()
+  const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure()
 
   const [assigneeId, setAssigneeId] = useState('')
   const [comment, setComment] = useState('')
   const [mergeSearch, setMergeSearch] = useState('')
   const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([])
+
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editCategory, setEditCategory] = useState<TicketCategory>('software')
+  const [editPriority, setEditPriority] = useState<TicketPriority>('medium')
+  const [editSubmitted, setEditSubmitted] = useState(false)
 
   const ticket = ticketStore.getTicketById(id || '')
   const records = ticketStore.getRecordsByTicketId(id || '')
@@ -86,6 +94,44 @@ export default function TicketDetail() {
     [ticket, ticketStore]
   )
   const following = ticket && currentUser ? isFollowing(ticket.id, currentUser.id) : false
+
+  const handleOpenEdit = () => {
+    if (!ticket) return
+    setEditTitle(ticket.title)
+    setEditDescription(ticket.description)
+    setEditCategory(ticket.category)
+    setEditPriority(ticket.priority)
+    setEditSubmitted(false)
+    onEditOpen()
+  }
+
+  const editTitleError = editSubmitted && !editTitle.trim() ? '请输入工单标题' : ''
+  const editDescriptionError = editSubmitted
+    ? !editDescription.trim()
+      ? '请输入工单描述'
+      : editDescription.trim().length < 10
+        ? '描述至少需要10个字符'
+        : ''
+    : ''
+
+  const handleEditSubmit = () => {
+    if (!ticket || !currentUser || isMerged) return
+    setEditSubmitted(true)
+    if (editTitleError || editDescriptionError) return
+
+    ticketStore.editTicket(
+      ticket.id,
+      {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        category: editCategory,
+        priority: editPriority,
+      },
+      currentUser.id
+    )
+    toast({ title: '工单已更新', status: 'success', duration: 2000 })
+    onEditClose()
+  }
 
   const candidateTickets = useMemo(() => {
     if (!ticket) return []
@@ -390,6 +436,17 @@ export default function TicketDetail() {
         <Text fontSize="sm" color="gray.500" fontWeight="500">{ticket.id}</Text>
         <Heading size="md" flex={1} isTruncated>{ticket.title}</Heading>
         <Button
+          variant="outline"
+          colorScheme="gray"
+          size="sm"
+          leftIcon={<Icon as={Pencil} />}
+          onClick={handleOpenEdit}
+          borderRadius="8px"
+          isDisabled={isMerged}
+        >
+          编辑
+        </Button>
+        <Button
           variant={following ? 'solid' : 'outline'}
           colorScheme={following ? 'blue' : 'gray'}
           size="sm"
@@ -620,6 +677,107 @@ export default function TicketDetail() {
               leftIcon={<Merge size={16} />}
             >
               合并 {selectedMergeIds.length} 个工单
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={isEditOpen} onClose={onEditClose} size="xl">
+        <ModalOverlay />
+        <ModalContent borderRadius="16px">
+          <ModalHeader>编辑工单</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack align="stretch" spacing={4}>
+              <FormControl isInvalid={!!editTitleError}>
+                <FormLabel>标题</FormLabel>
+                <Input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="请输入工单标题"
+                  borderRadius="8px"
+                />
+                {editTitleError && <FormErrorMessage>{editTitleError}</FormErrorMessage>}
+              </FormControl>
+
+              <FormControl isInvalid={!!editDescriptionError}>
+                <FormLabel>描述</FormLabel>
+                <Textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="请详细描述问题（至少10个字符）"
+                  minH="120px"
+                  borderRadius="8px"
+                />
+                {editDescriptionError && <FormErrorMessage>{editDescriptionError}</FormErrorMessage>}
+              </FormControl>
+
+              <SimpleGrid columns={2} spacing={4}>
+                <FormControl>
+                  <FormLabel>分类</FormLabel>
+                  <Select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value as TicketCategory)}
+                    borderRadius="8px"
+                  >
+                    {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>优先级</FormLabel>
+                  <Select
+                    value={editPriority}
+                    onChange={(e) => setEditPriority(e.target.value as TicketPriority)}
+                    borderRadius="8px"
+                  >
+                    {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </Select>
+                </FormControl>
+              </SimpleGrid>
+
+              <Card borderRadius="12px" bg="gray.50" border="1px solid" borderColor="gray.200">
+                <CardBody py={3} px={4}>
+                  <VStack align="stretch" spacing={2}>
+                    <HStack spacing={2}>
+                      <Icon as={AlertTriangle} color="gray.500" boxSize={4} />
+                      <Text fontSize="xs" fontWeight="600" color="gray.600">
+                        以下字段不可修改
+                      </Text>
+                    </HStack>
+                    <SimpleGrid columns={2} spacing={3} pt={1}>
+                      <HStack spacing={2}>
+                        <Text fontSize="xs" color="gray.500" w="60px" flexShrink={0}>状态</Text>
+                        <StatusBadge status={ticket.status} size="sm" />
+                      </HStack>
+                      <HStack spacing={2}>
+                        <Text fontSize="xs" color="gray.500" w="60px" flexShrink={0}>处理人</Text>
+                        <Text fontSize="xs">{getUserName(ticket.assigneeId)}</Text>
+                      </HStack>
+                      <HStack spacing={2}>
+                        <Text fontSize="xs" color="gray.500" w="60px" flexShrink={0}>创建人</Text>
+                        <Text fontSize="xs">{getUserName(ticket.creatorId)}</Text>
+                      </HStack>
+                      <HStack spacing={2}>
+                        <Text fontSize="xs" color="gray.500" w="60px" flexShrink={0}>创建时间</Text>
+                        <Text fontSize="xs">{formatDateTime(ticket.createdAt)}</Text>
+                      </HStack>
+                    </SimpleGrid>
+                  </VStack>
+                </CardBody>
+              </Card>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={onEditClose}>
+              取消
+            </Button>
+            <Button colorScheme="blue" onClick={handleEditSubmit} leftIcon={<Icon as={Pencil} size={16} />}>
+              保存修改
             </Button>
           </ModalFooter>
         </ModalContent>

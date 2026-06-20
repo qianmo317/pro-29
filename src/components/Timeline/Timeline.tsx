@@ -9,6 +9,7 @@ const ACTION_COLORS: Record<string, string> = {
   confirmed: '#FDCB6E',
   merged: '#718096',
   merged_to: '#718096',
+  edited: '#ED8936',
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -19,6 +20,7 @@ const ACTION_LABELS: Record<string, string> = {
   confirmed: '确认工单',
   merged: '合并工单',
   merged_to: '合并到主工单',
+  edited: '编辑工单',
 }
 
 function formatTimestamp(iso: string): string {
