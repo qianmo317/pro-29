@@ -7,6 +7,8 @@ const ACTION_COLORS: Record<string, string> = {
   status_changed: '#A29BFE',
   comment: '#6C5CE7',
   confirmed: '#FDCB6E',
+  merged: '#718096',
+  merged_to: '#718096',
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -15,6 +17,8 @@ const ACTION_LABELS: Record<string, string> = {
   status_changed: '变更状态',
   comment: '添加备注',
   confirmed: '确认工单',
+  merged: '合并工单',
+  merged_to: '合并到主工单',
 }
 
 function formatTimestamp(iso: string): string {

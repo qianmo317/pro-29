@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
 import { useNotificationStore } from '@/store/notificationStore'
@@ -20,13 +20,22 @@ import {
   useToast,
   Flex,
   Icon,
-  Avatar,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure,
+  Checkbox,
+  Input,
 } from '@chakra-ui/react'
-import { ArrowLeft, User, Clock, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff, Merge, ExternalLink } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import Timeline from '@/components/Timeline/Timeline'
-import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS, STATUS_LABELS } from '@/types'
+import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS } from '@/types'
 import { type TicketStatus } from '@/types'
 
 function formatDateTime(iso: string): string {
@@ -52,21 +61,48 @@ export default function TicketDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const toast = useToast()
-  const { getTicketById, getRecordsByTicketId, assignTicket, changeStatus, addRecord } = useTicketStore()
+  const ticketStore = useTicketStore()
   const { users, currentUser } = useUserStore()
   const { isFollowing, followTicket, unfollowTicket } = useNotificationStore()
+  const { isOpen, onOpen, onClose } = useDisclosure()
 
   const [assigneeId, setAssigneeId] = useState('')
   const [comment, setComment] = useState('')
+  const [mergeSearch, setMergeSearch] = useState('')
+  const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([])
 
-  const ticket = getTicketById(id || '')
-  const records = getRecordsByTicketId(id || '')
+  const ticket = ticketStore.getTicketById(id || '')
+  const records = ticketStore.getRecordsByTicketId(id || '')
+  const mergedTickets = useMemo(
+    () => (ticket ? ticketStore.getMergedTickets(ticket.id) : []),
+    [ticket, ticketStore]
+  )
+  const mainTicket = useMemo(
+    () => (ticket ? ticketStore.getMainTicket(ticket.id) : undefined),
+    [ticket, ticketStore]
+  )
+  const isMerged = useMemo(
+    () => (ticket ? ticketStore.isTicketMerged(ticket.id) : false),
+    [ticket, ticketStore]
+  )
   const following = ticket && currentUser ? isFollowing(ticket.id, currentUser.id) : false
+
+  const candidateTickets = useMemo(() => {
+    if (!ticket) return []
+    const s = mergeSearch.toLowerCase().trim()
+    return ticketStore.tickets.filter(t => {
+      if (t.id === ticket.id) return false
+      if (t.status === 'merged') return false
+      if (t.mergedTicketIds.length > 0) return false
+      if (s && !t.title.toLowerCase().includes(s) && !t.id.toLowerCase().includes(s)) return false
+      return true
+    }).slice(0, 20)
+  }, [ticketStore.tickets, ticket, mergeSearch])
 
   if (!currentUser) return null
 
   const handleToggleFollow = () => {
-    if (!ticket || !currentUser) return
+    if (!ticket || !currentUser || isMerged) return
     if (following) {
       unfollowTicket(ticket.id, currentUser.id)
       toast({ title: '已取消关注', status: 'info', duration: 2000 })
@@ -96,31 +132,82 @@ export default function TicketDetail() {
   const agents = users.filter(u => u.role === 'agent' || u.role === 'admin')
 
   const handleAssign = () => {
-    if (!assigneeId) {
+    if (!assigneeId || isMerged) {
       toast({ title: '请选择处理人', status: 'warning', duration: 2000 })
       return
     }
-    assignTicket(ticket.id, assigneeId, currentUser.id)
+    ticketStore.assignTicket(ticket.id, assigneeId, currentUser.id)
     setAssigneeId('')
     toast({ title: '已分配处理人', status: 'success', duration: 2000 })
   }
 
   const handleStatusChange = (newStatus: TicketStatus, content: string) => {
-    changeStatus(ticket.id, newStatus, currentUser.id, content)
+    if (isMerged) return
+    ticketStore.changeStatus(ticket.id, newStatus, currentUser.id, content)
     toast({ title: '状态已更新', status: 'success', duration: 2000 })
   }
 
   const handleAddComment = () => {
-    if (!comment.trim()) {
+    if (!comment.trim() || isMerged) {
       toast({ title: '请输入备注内容', status: 'warning', duration: 2000 })
       return
     }
-    addRecord(ticket.id, currentUser.id, 'comment', comment.trim())
+    ticketStore.addRecord(ticket.id, currentUser.id, 'comment', comment.trim())
     setComment('')
     toast({ title: '备注已添加', status: 'success', duration: 2000 })
   }
 
+  const toggleMergeSelect = (tid: string) => {
+    setSelectedMergeIds(prev =>
+      prev.includes(tid) ? prev.filter(i => i !== tid) : [...prev, tid]
+    )
+  }
+
+  const handleConfirmMerge = () => {
+    if (!ticket || selectedMergeIds.length === 0 || !currentUser) return
+    ticketStore.mergeTickets(ticket.id, selectedMergeIds, currentUser.id)
+    toast({ title: `已将 ${selectedMergeIds.length} 个工单合并到当前工单`, status: 'success', duration: 3000 })
+    setSelectedMergeIds([])
+    setMergeSearch('')
+    onClose()
+  }
+
   const renderActionPanel = () => {
+    if (isMerged) {
+      return (
+        <VStack align="stretch" spacing={3}>
+          <Card borderRadius="12px" bg="gray.50" border="1px solid" borderColor="gray.200">
+            <CardBody py={3} px={4}>
+              <HStack spacing={2}>
+                <Icon as={AlertTriangle} color="gray.500" boxSize={5} />
+                <VStack align="stretch" spacing={1} flex={1}>
+                  <Text fontSize="sm" fontWeight="600" color="gray.600">
+                    此工单已被合并
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    合并后工单为只读状态，所有操作已禁用
+                  </Text>
+                </VStack>
+              </HStack>
+              {mainTicket && (
+                <Button
+                  mt={3}
+                  size="sm"
+                  variant="outline"
+                  colorScheme="blue"
+                  leftIcon={<ExternalLink size={14} />}
+                  onClick={() => navigate(`/tickets/${mainTicket.id}`)}
+                  w="full"
+                >
+                  查看主工单 {mainTicket.id}
+                </Button>
+              )}
+            </CardBody>
+          </Card>
+        </VStack>
+      )
+    }
+
     switch (ticket.status) {
       case 'pending':
         return (
@@ -140,18 +227,39 @@ export default function TicketDetail() {
                 分配
               </Button>
             </HStack>
+            <Divider />
+            <Button
+              leftIcon={<Merge size={16} />}
+              variant="outline"
+              colorScheme="purple"
+              onClick={onOpen}
+              size="sm"
+            >
+              合并其他工单
+            </Button>
           </VStack>
         )
       case 'assigned':
         return (
-          <Button
-            colorScheme="purple"
-            leftIcon={<Icon as={Play} />}
-            onClick={() => handleStatusChange('in_progress', '开始处理工单')}
-            w="full"
-          >
-            开始处理
-          </Button>
+          <VStack align="stretch" spacing={3}>
+            <Button
+              colorScheme="purple"
+              leftIcon={<Icon as={Play} />}
+              onClick={() => handleStatusChange('in_progress', '开始处理工单')}
+              w="full"
+            >
+              开始处理
+            </Button>
+            <Button
+              leftIcon={<Merge size={16} />}
+              variant="outline"
+              colorScheme="purple"
+              onClick={onOpen}
+              size="sm"
+            >
+              合并其他工单
+            </Button>
+          </VStack>
         )
       case 'in_progress':
         return (
@@ -180,6 +288,16 @@ export default function TicketDetail() {
             >
               提交备注
             </Button>
+            <Divider />
+            <Button
+              leftIcon={<Merge size={16} />}
+              variant="outline"
+              colorScheme="purple"
+              onClick={onOpen}
+              size="sm"
+            >
+              合并其他工单
+            </Button>
           </VStack>
         )
       case 'waiting_confirmation':
@@ -200,22 +318,54 @@ export default function TicketDetail() {
             >
               驳回
             </Button>
+            <Divider />
+            <Button
+              leftIcon={<Merge size={16} />}
+              variant="outline"
+              colorScheme="purple"
+              onClick={onOpen}
+              size="sm"
+            >
+              合并其他工单
+            </Button>
           </VStack>
         )
       case 'closed':
         return (
-          <Text fontSize="sm" color="gray.500" textAlign="center" py={2}>已关闭</Text>
+          <VStack align="stretch" spacing={3}>
+            <Text fontSize="sm" color="gray.500" textAlign="center" py={2}>已关闭</Text>
+            <Button
+              leftIcon={<Merge size={16} />}
+              variant="outline"
+              colorScheme="purple"
+              onClick={onOpen}
+              size="sm"
+            >
+              合并其他工单
+            </Button>
+          </VStack>
         )
       case 'rejected':
         return (
-          <Button
-            colorScheme="orange"
-            leftIcon={<Icon as={RotateCcw} />}
-            onClick={() => handleStatusChange('in_progress', '重新处理工单')}
-            w="full"
-          >
-            重新处理
-          </Button>
+          <VStack align="stretch" spacing={3}>
+            <Button
+              colorScheme="orange"
+              leftIcon={<Icon as={RotateCcw} />}
+              onClick={() => handleStatusChange('in_progress', '重新处理工单')}
+              w="full"
+            >
+              重新处理
+            </Button>
+            <Button
+              leftIcon={<Merge size={16} />}
+              variant="outline"
+              colorScheme="purple"
+              onClick={onOpen}
+              size="sm"
+            >
+              合并其他工单
+            </Button>
+          </VStack>
         )
       default:
         return null
@@ -242,11 +392,66 @@ export default function TicketDetail() {
           leftIcon={<Icon as={following ? BellOff : Bell} />}
           onClick={handleToggleFollow}
           borderRadius="8px"
+          isDisabled={isMerged}
         >
           {following ? '取消关注' : '关注工单'}
         </Button>
         <StatusBadge status={ticket.status} size="md" />
       </Flex>
+
+      {isMerged && mainTicket && (
+        <Card borderRadius="16px" bg="blue.50" border="1px solid" borderColor="blue.200">
+          <CardBody py={4} px={6}>
+            <HStack spacing={3}>
+              <Icon as={AlertTriangle} color="blue.500" boxSize={6} />
+              <VStack align="stretch" spacing={1} flex={1}>
+                <Text fontSize="sm" fontWeight="600" color="blue.700">
+                  此工单已合并到主工单
+                </Text>
+                <Text fontSize="xs" color="blue.600">
+                  当前工单为只读状态，已有的处理记录已全部汇总到主工单
+                </Text>
+              </VStack>
+              <Button
+                colorScheme="blue"
+                size="sm"
+                leftIcon={<ExternalLink size={14} />}
+                onClick={() => navigate(`/tickets/${mainTicket.id}`)}
+              >
+                跳转到主工单
+              </Button>
+            </HStack>
+          </CardBody>
+        </Card>
+      )}
+
+      {mergedTickets.length > 0 && (
+        <Card borderRadius="16px">
+          <CardBody p={5}>
+            <Text fontSize="sm" fontWeight="600" color="#2D3748" mb={3}>
+              已合并工单（{mergedTickets.length} 个）
+            </Text>
+            <VStack align="stretch" spacing={2}>
+              {mergedTickets.map(t => (
+                <HStack
+                  key={t.id}
+                  p={3}
+                  bg="gray.50"
+                  borderRadius="8px"
+                  cursor="pointer"
+                  _hover={{ bg: 'gray.100' }}
+                  onClick={() => navigate(`/tickets/${t.id}`)}
+                >
+                  <Badge colorScheme="purple">{t.id}</Badge>
+                  <Text fontSize="sm" flex={1} isTruncated>{t.title}</Text>
+                  <StatusBadge status={t.status} size="sm" />
+                  <Icon as={ExternalLink} size={14} color="gray.400" />
+                </HStack>
+              ))}
+            </VStack>
+          </CardBody>
+        </Card>
+      )}
 
       <SimpleGrid columns={3} spacing={6}>
         <Box gridColumn="span 2">
@@ -330,10 +535,91 @@ export default function TicketDetail() {
 
       <Card borderRadius="16px">
         <CardBody p={6}>
-          <Text fontSize="sm" fontWeight="600" color="#2D3748" mb={4}>处理记录</Text>
+          <Text fontSize="sm" fontWeight="600" color="#2D3748" mb={4}>
+            处理记录
+            {mergedTickets.length > 0 && (
+              <Badge ml={2} colorScheme="purple" fontSize="xs">
+                包含 {mergedTickets.length} 个合并工单的记录
+              </Badge>
+            )}
+          </Text>
           <Timeline records={records} users={users} />
         </CardBody>
       </Card>
+
+      <Modal isOpen={isOpen} onClose={onClose} size="xl">
+        <ModalOverlay />
+        <ModalContent borderRadius="16px">
+          <ModalHeader>合并工单到当前工单</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack align="stretch" spacing={4}>
+              <Text fontSize="sm" color="gray.600">
+                选择要合并到当前工单的工单。被合并的工单将变为只读状态，所有处理记录会汇总到当前工单。
+              </Text>
+              <Box>
+                <Text fontSize="sm" fontWeight="600" mb={2}>搜索工单</Text>
+                <Input
+                  placeholder="输入工单编号或标题搜索..."
+                  value={mergeSearch}
+                  onChange={e => setMergeSearch(e.target.value)}
+                  borderRadius="8px"
+                />
+              </Box>
+              <Box>
+                <Text fontSize="sm" fontWeight="600" mb={2}>
+                  选择要合并的工单
+                  {selectedMergeIds.length > 0 && (
+                    <Badge ml={2} colorScheme="blue">{selectedMergeIds.length} 个已选</Badge>
+                  )}
+                </Text>
+                <VStack align="stretch" spacing={2} maxH="320px" overflowY="auto">
+                  {candidateTickets.length === 0 ? (
+                    <Text textAlign="center" py={8} color="gray.400" fontSize="sm">
+                      没有可合并的工单
+                    </Text>
+                  ) : (
+                    candidateTickets.map(t => (
+                      <HStack
+                        key={t.id}
+                        p={3}
+                        bg={selectedMergeIds.includes(t.id) ? 'purple.50' : 'gray.50'}
+                        borderRadius="8px"
+                        cursor="pointer"
+                        border="1px solid"
+                        borderColor={selectedMergeIds.includes(t.id) ? 'purple.200' : 'transparent'}
+                        onClick={() => toggleMergeSelect(t.id)}
+                      >
+                        <Checkbox
+                          isChecked={selectedMergeIds.includes(t.id)}
+                          onChange={() => toggleMergeSelect(t.id)}
+                          mr={2}
+                        />
+                        <Badge colorScheme="purple" flexShrink={0}>{t.id}</Badge>
+                        <Text fontSize="sm" flex={1} isTruncated>{t.title}</Text>
+                        <StatusBadge status={t.status} size="sm" />
+                      </HStack>
+                    ))
+                  )}
+                </VStack>
+              </Box>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={onClose}>
+              取消
+            </Button>
+            <Button
+              colorScheme="purple"
+              onClick={handleConfirmMerge}
+              isDisabled={selectedMergeIds.length === 0}
+              leftIcon={<Merge size={16} />}
+            >
+              合并 {selectedMergeIds.length} 个工单
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </VStack>
   )
 }

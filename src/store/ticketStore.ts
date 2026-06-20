@@ -19,7 +19,7 @@ interface TicketState {
   records: TicketRecord[]
   nextId: number
   initialize: () => void
-  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status'>) => Ticket
+  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds'>) => Ticket
   updateTicket: (id: string, updates: Partial<Ticket>) => void
   assignTicket: (id: string, assigneeId: string, operatorId: string) => void
   changeStatus: (id: string, status: TicketStatus, operatorId: string, content: string) => void
@@ -43,6 +43,10 @@ interface TicketState {
     users: { id: string; name: string }[],
     onProgress?: (current: number, total: number) => void,
   ) => Promise<ImportResult>
+  mergeTickets: (mainTicketId: string, mergedTicketIds: string[], operatorId: string) => void
+  getMergedTickets: (ticketId: string) => Ticket[]
+  getMainTicket: (ticketId: string) => Ticket | undefined
+  isTicketMerged: (ticketId: string) => boolean
 }
 
 export interface TicketFilters {
@@ -81,6 +85,8 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       createdAt: now,
       updatedAt: now,
       slaDeadline: getSLADeadline(ticketData.priority, now),
+      mergedToId: null,
+      mergedTicketIds: [],
     }
     const newRecord: TicketRecord = {
       id: `r_${Date.now()}`,
@@ -102,6 +108,8 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   },
 
   updateTicket: (id, updates) => {
+    const ticket = get().getTicketById(id)
+    if (!ticket || get().isTicketMerged(id)) return
     set((state) => {
       const tickets = state.tickets.map(t =>
         t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
@@ -112,6 +120,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   },
 
   assignTicket: (id, assigneeId, operatorId) => {
+    if (get().isTicketMerged(id)) return
     const now = new Date().toISOString()
     const record: TicketRecord = {
       id: `r_${Date.now()}`,
@@ -134,6 +143,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   },
 
   changeStatus: (id, status, operatorId, content) => {
+    if (get().isTicketMerged(id)) return
     const now = new Date().toISOString()
     const record: TicketRecord = {
       id: `r_${Date.now()}`,
@@ -156,6 +166,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   },
 
   addRecord: (ticketId, operatorId, action, content) => {
+    if (get().isTicketMerged(ticketId)) return
     const now = new Date().toISOString()
     const record: TicketRecord = {
       id: `r_${Date.now()}`,
@@ -182,7 +193,12 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   },
 
   getRecordsByTicketId: (id) => {
-    return get().records.filter(r => r.ticketId === id).sort((a, b) =>
+    const ticket = get().getTicketById(id)
+    let ticketIds = [id]
+    if (ticket && ticket.mergedTicketIds.length > 0) {
+      ticketIds = [...ticketIds, ...ticket.mergedTicketIds]
+    }
+    return get().records.filter(r => ticketIds.includes(r.ticketId)).sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )
   },
@@ -336,5 +352,93 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       failed: failedCount,
       items,
     }
+  },
+
+  mergeTickets: (mainTicketId, mergedTicketIds, operatorId) => {
+    const now = new Date().toISOString()
+    const mainTicket = get().getTicketById(mainTicketId)
+    if (!mainTicket) return
+
+    const validMergedIds = mergedTicketIds.filter(id => {
+      const t = get().getTicketById(id)
+      return t && t.id !== mainTicketId && t.status !== 'merged' && !t.mergedTicketIds?.length
+    })
+
+    if (validMergedIds.length === 0) return
+
+    const allMergedIds = [...new Set([...mainTicket.mergedTicketIds, ...validMergedIds])]
+
+    const newRecords: TicketRecord[] = []
+
+    const mergeRecord: TicketRecord = {
+      id: `r_${Date.now()}_merge`,
+      ticketId: mainTicketId,
+      operatorId,
+      action: 'merged',
+      content: `合并工单：${validMergedIds.join('、')}`,
+      createdAt: now,
+    }
+    newRecords.push(mergeRecord)
+
+    validMergedIds.forEach((id, index) => {
+      const mergedRecord: TicketRecord = {
+        id: `r_${Date.now()}_merged_${index}`,
+        ticketId: id,
+        operatorId,
+        action: 'merged_to',
+        content: `已合并到主工单 ${mainTicketId}`,
+        createdAt: now,
+      }
+      newRecords.push(mergedRecord)
+    })
+
+    set((state) => {
+      const tickets = state.tickets.map(t => {
+        if (t.id === mainTicketId) {
+          return {
+            ...t,
+            mergedTicketIds: allMergedIds,
+            updatedAt: now,
+          }
+        }
+        if (validMergedIds.includes(t.id)) {
+          return {
+            ...t,
+            status: 'merged' as TicketStatus,
+            mergedToId: mainTicketId,
+            updatedAt: now,
+          }
+        }
+        return t
+      })
+
+      const records = [...newRecords, ...state.records]
+
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+
+      return { tickets, records }
+    })
+
+    useNotificationStore.getState().createNotificationsForFollowers(mainTicketId, mergeRecord, operatorId)
+  },
+
+  getMergedTickets: (ticketId) => {
+    const ticket = get().getTicketById(ticketId)
+    if (!ticket || ticket.mergedTicketIds.length === 0) return []
+    return ticket.mergedTicketIds
+      .map(id => get().getTicketById(id))
+      .filter((t): t is Ticket => t !== undefined)
+  },
+
+  getMainTicket: (ticketId) => {
+    const ticket = get().getTicketById(ticketId)
+    if (!ticket || !ticket.mergedToId) return undefined
+    return get().getTicketById(ticket.mergedToId)
+  },
+
+  isTicketMerged: (ticketId) => {
+    const ticket = get().getTicketById(ticketId)
+    return ticket?.status === 'merged' || !!ticket?.mergedToId
   },
 }))

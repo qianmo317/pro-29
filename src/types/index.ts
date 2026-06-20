@@ -1,4 +1,4 @@
-export type TicketStatus = 'pending' | 'assigned' | 'in_progress' | 'waiting_confirmation' | 'closed' | 'rejected'
+export type TicketStatus = 'pending' | 'assigned' | 'in_progress' | 'waiting_confirmation' | 'closed' | 'rejected' | 'merged'
 export type TicketPriority = 'critical' | 'high' | 'medium' | 'low'
 export type TicketCategory = 'network' | 'hardware' | 'software' | 'security' | 'access' | 'other'
 export type UserRole = 'admin' | 'agent' | 'submitter'
@@ -25,6 +25,8 @@ export interface Ticket {
   updatedAt: string
   slaDeadline: string
   knowledgeId: string | null
+  mergedToId: string | null
+  mergedTicketIds: string[]
 }
 
 export interface TicketRecord {
@@ -63,6 +65,7 @@ export const STATUS_LABELS: Record<TicketStatus, string> = {
   waiting_confirmation: '待确认',
   closed: '已关闭',
   rejected: '已驳回',
+  merged: '已合并',
 }
 
 export const PRIORITY_LABELS: Record<TicketPriority, string> = {
@@ -95,6 +98,7 @@ export const STATUS_COLORS: Record<TicketStatus, string> = {
   waiting_confirmation: '#FDCB6E',
   closed: '#00B894',
   rejected: '#FF7675',
+  merged: '#718096',
 }
 
 export interface ImportTicketRow {
