@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useKnowledgeStore } from '@/store/knowledgeStore'
 import { useUserStore } from '@/store/userStore'
 import { useNavigate } from 'react-router-dom'
@@ -17,8 +17,19 @@ import {
   InputLeftElement,
   Icon,
   Tag,
+  Button,
+  IconButton,
+  Tooltip,
+  useToast,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogContent,
+  AlertDialogOverlay,
+  useDisclosure,
 } from '@chakra-ui/react'
-import { Search, BookOpen, Tag as TagIcon } from 'lucide-react'
+import { Search, BookOpen, Tag as TagIcon, Plus, Pencil, Trash2 } from 'lucide-react'
 import { CATEGORY_LABELS, type TicketCategory } from '@/types'
 
 function formatTimeAgo(dateStr: string): string {
@@ -35,10 +46,18 @@ function formatTimeAgo(dateStr: string): string {
 
 export default function KnowledgeList() {
   const navigate = useNavigate()
+  const toast = useToast()
   const articles = useKnowledgeStore((s) => s.articles)
   const searchArticles = useKnowledgeStore((s) => s.searchArticles)
   const getArticlesByCategory = useKnowledgeStore((s) => s.getArticlesByCategory)
+  const deleteArticle = useKnowledgeStore((s) => s.deleteArticle)
   const users = useUserStore((s) => s.users)
+  const currentUser = useUserStore((s) => s.currentUser)
+  const isAdmin = currentUser?.role === 'admin'
+
+  const { isOpen, onOpen, onClose } = useDisclosure()
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState<string>('all')
@@ -63,6 +82,29 @@ export default function KnowledgeList() {
 
   const categories = ['all', ...Object.keys(CATEGORY_LABELS)] as const
 
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    setDeletingId(id)
+    onOpen()
+  }
+
+  const handleConfirmDelete = () => {
+    if (!deletingId) return
+    const ok = deleteArticle(deletingId)
+    if (ok) {
+      toast({ status: 'success', title: '删除成功', description: '文章已删除' })
+    } else {
+      toast({ status: 'error', title: '删除失败', description: '文章不存在' })
+    }
+    setDeletingId(null)
+    onClose()
+  }
+
+  const handleEditClick = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    navigate(`/knowledge/${id}/edit`)
+  }
+
   return (
     <Box p={6}>
       <HStack justify="space-between" mb={6}>
@@ -70,17 +112,28 @@ export default function KnowledgeList() {
           <Icon as={BookOpen} boxSize={6} color="brand.500" />
           <Heading size="lg">知识库</Heading>
         </HStack>
-        <InputGroup maxW="360px">
-          <InputLeftElement pointerEvents="none">
-            <Icon as={Search} color="gray.400" />
-          </InputLeftElement>
-          <Input
-            placeholder="搜索文章..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            borderRadius="12px"
-          />
-        </InputGroup>
+        <HStack>
+          <InputGroup maxW="360px">
+            <InputLeftElement pointerEvents="none">
+              <Icon as={Search} color="gray.400" />
+            </InputLeftElement>
+            <Input
+              placeholder="搜索文章..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              borderRadius="12px"
+            />
+          </InputGroup>
+          {isAdmin && (
+            <Button
+              colorScheme="brand"
+              leftIcon={<Icon as={Plus} />}
+              onClick={() => navigate('/knowledge/create')}
+            >
+              发布新文章
+            </Button>
+          )}
+        </HStack>
       </HStack>
 
       <HStack spacing={2} mb={6} flexWrap="wrap">
@@ -120,9 +173,35 @@ export default function KnowledgeList() {
             >
               <CardBody>
                 <VStack align="stretch" spacing={3}>
-                  <Heading size="md" noOfLines={1}>
-                    {article.title}
-                  </Heading>
+                  <HStack justify="space-between" align="start">
+                    <Heading size="md" noOfLines={1} flex={1} pr={2}>
+                      {article.title}
+                    </Heading>
+                    {isAdmin && (
+                      <HStack spacing={1} onClick={(e) => e.stopPropagation()}>
+                        <Tooltip label="编辑">
+                          <IconButton
+                            aria-label="edit"
+                            size="sm"
+                            variant="ghost"
+                            colorScheme="brand"
+                            icon={<Icon as={Pencil} boxSize={4} />}
+                            onClick={(e) => handleEditClick(e, article.id)}
+                          />
+                        </Tooltip>
+                        <Tooltip label="删除">
+                          <IconButton
+                            aria-label="delete"
+                            size="sm"
+                            variant="ghost"
+                            colorScheme="red"
+                            icon={<Icon as={Trash2} boxSize={4} />}
+                            onClick={(e) => handleDeleteClick(e, article.id)}
+                          />
+                        </Tooltip>
+                      </HStack>
+                    )}
+                  </HStack>
 
                   <Text color="gray.500" fontSize="sm" noOfLines={2}>
                     {article.content.length > 100
@@ -158,6 +237,32 @@ export default function KnowledgeList() {
           ))}
         </SimpleGrid>
       )}
+
+      <AlertDialog
+        isOpen={isOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={onClose}
+        isCentered
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              确认删除文章
+            </AlertDialogHeader>
+            <AlertDialogBody>
+              删除后无法恢复，确定要删除这篇知识文章吗？
+            </AlertDialogBody>
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={onClose}>
+                取消
+              </Button>
+              <Button colorScheme="red" onClick={handleConfirmDelete} ml={3}>
+                确认删除
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
     </Box>
   )
 }

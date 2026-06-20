@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { KnowledgeArticle } from '@/types'
+import type { KnowledgeArticle, TicketCategory } from '@/types'
 import { MOCK_KNOWLEDGE } from '@/utils/mockData'
 import { saveToStorage, loadFromStorage } from '@/utils/storage'
 
@@ -9,9 +9,21 @@ interface KnowledgeState {
   getArticleById: (id: string) => KnowledgeArticle | undefined
   searchArticles: (keyword: string) => KnowledgeArticle[]
   getArticlesByCategory: (category: string) => KnowledgeArticle[]
+  addArticle: (data: Omit<KnowledgeArticle, 'id' | 'createdAt' | 'updatedAt' | 'authorId'> & { authorId: string }) => KnowledgeArticle
+  updateArticle: (id: string, data: Partial<Pick<KnowledgeArticle, 'title' | 'content' | 'category' | 'tags' | 'relatedTicketId'>>) => KnowledgeArticle | undefined
+  deleteArticle: (id: string) => boolean
 }
 
 const STORAGE_KEY = 'knowledge'
+
+const persist = (articles: KnowledgeArticle[]) => {
+  saveToStorage(STORAGE_KEY, articles)
+}
+
+const generateId = () => {
+  const random = Math.random().toString(36).substring(2, 8)
+  return `k-${Date.now()}-${random}`
+}
 
 export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   articles: MOCK_KNOWLEDGE,
@@ -37,5 +49,48 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   getArticlesByCategory: (category) => {
     if (!category || category === 'all') return get().articles
     return get().articles.filter(a => a.category === category)
+  },
+
+  addArticle: (data) => {
+    const now = new Date().toISOString()
+    const newArticle: KnowledgeArticle = {
+      id: generateId(),
+      title: data.title,
+      content: data.content,
+      category: data.category as TicketCategory,
+      tags: data.tags,
+      authorId: data.authorId,
+      relatedTicketId: data.relatedTicketId ?? null,
+      createdAt: now,
+      updatedAt: now,
+    }
+    const next = [newArticle, ...get().articles]
+    set({ articles: next })
+    persist(next)
+    return newArticle
+  },
+
+  updateArticle: (id, data) => {
+    const index = get().articles.findIndex(a => a.id === id)
+    if (index === -1) return undefined
+    const updated: KnowledgeArticle = {
+      ...get().articles[index],
+      ...data,
+      updatedAt: new Date().toISOString(),
+    }
+    const next = [...get().articles]
+    next[index] = updated
+    set({ articles: next })
+    persist(next)
+    return updated
+  },
+
+  deleteArticle: (id) => {
+    const exists = get().articles.some(a => a.id === id)
+    if (!exists) return false
+    const next = get().articles.filter(a => a.id !== id)
+    set({ articles: next })
+    persist(next)
+    return true
   },
 }))

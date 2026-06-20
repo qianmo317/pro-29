@@ -12,6 +12,7 @@ import ScheduledTickets from '@/pages/ScheduledTickets/ScheduledTickets'
 import TemplateManage from '@/pages/TemplateManage/TemplateManage'
 import KnowledgeList from '@/pages/Knowledge/KnowledgeList'
 import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail'
+import KnowledgeEdit from '@/pages/Knowledge/KnowledgeEdit'
 import Reports from '@/pages/Reports/Reports'
 import { useUserStore } from '@/store/userStore'
 import { useTicketStore } from '@/store/ticketStore'
@@ -19,6 +20,7 @@ import { useTemplateStore } from '@/store/templateStore'
 import { useNotificationStore } from '@/store/notificationStore'
 import { useScheduledTicketStore } from '@/store/scheduledTicketStore'
 import { useDepartmentStore } from '@/store/departmentStore'
+import { useKnowledgeStore } from '@/store/knowledgeStore'
 
 export default function App() {
   const initAuth = useUserStore((s) => s.initAuth)
@@ -28,6 +30,7 @@ export default function App() {
   const initNotifications = useNotificationStore((s) => s.initialize)
   const initScheduled = useScheduledTicketStore((s) => s.initialize)
   const initDepartments = useDepartmentStore((s) => s.initialize)
+  const initKnowledge = useKnowledgeStore((s) => s.initialize)
   const processDueTickets = useScheduledTicketStore((s) => s.processDueTickets)
 
   useEffect(() => {
@@ -38,12 +41,13 @@ export default function App() {
     initNotifications()
     initScheduled()
     initDepartments()
+    initKnowledge()
     processDueTickets()
     const interval = setInterval(() => {
       processDueTickets()
     }, 30000)
     return () => clearInterval(interval)
-  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, processDueTickets])
+  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, processDueTickets])
 
   return (
     <Router>
@@ -66,7 +70,9 @@ export default function App() {
           <Route path="scheduled-tickets" element={<ScheduledTickets />} />
           <Route path="templates" element={<TemplateManage />} />
           <Route path="knowledge" element={<KnowledgeList />} />
+          <Route path="knowledge/create" element={<KnowledgeEdit />} />
           <Route path="knowledge/:id" element={<KnowledgeDetail />} />
+          <Route path="knowledge/:id/edit" element={<KnowledgeEdit />} />
           <Route path="reports" element={<Reports />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
