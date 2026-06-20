@@ -41,7 +41,7 @@ export default function TicketCreate() {
   const users = useUserStore((s) => s.users)
   const currentUser = useUserStore((s) => s.currentUser)
   const searchArticles = useKnowledgeStore((s) => s.searchArticles)
-  const activeTemplates = useTemplateStore((s) => s.getActiveTemplates())
+  const templates = useTemplateStore((s) => s.templates)
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -52,6 +52,7 @@ export default function TicketCreate() {
   const [selectedTemplate, setSelectedTemplate] = useState<TicketTemplate | null>(null)
 
   const agents = useMemo(() => users.filter((u) => u.role === 'agent'), [users])
+  const activeTemplates = useMemo(() => templates.filter((t) => t.isActive), [templates])
   const recommendedArticles = useMemo(() => {
     if (!title.trim()) return []
     return searchArticles(title).slice(0, 3)

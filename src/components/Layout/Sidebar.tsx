@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { label: '工单管理', icon: TicketCheck, path: '/tickets', roles: ['admin', 'agent', 'submitter'] },
   { label: '模板管理', icon: FileText, path: '/templates', roles: ['admin'] },
   { label: '知识库', icon: BookOpen, path: '/knowledge', roles: ['admin', 'agent', 'submitter'] },
-  { label: '报表统计', icon: BarChart3, path: '/reports', roles: ['admin', 'agent'] },
+  { label: '报表统计', icon: BarChart3, path: '/reports', roles: ['admin', 'agent', 'submitter'] },
 ]
 
 const ROLE_LABELS: Record<string, string> = {

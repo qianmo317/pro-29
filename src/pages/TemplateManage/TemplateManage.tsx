@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import {
   Box,
   Card,
@@ -79,6 +79,7 @@ export default function TemplateManage() {
   const [deletingTemplate, setDeletingTemplate] = useState<TicketTemplate | null>(null)
   const [formData, setFormData] = useState<TemplateFormData>(initialFormData)
   const [submitted, setSubmitted] = useState(false)
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null)
 
   const sortedTemplates = useMemo(() => {
     return [...templates].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -412,7 +413,7 @@ export default function TemplateManage() {
 
       <AlertDialog
         isOpen={isDeleteOpen}
-        leastDestructiveRef={undefined}
+        leastDestructiveRef={cancelDeleteRef}
         onClose={closeDelete}
       >
         <AlertDialogOverlay>
@@ -427,7 +428,7 @@ export default function TemplateManage() {
             </AlertDialogBody>
 
             <AlertDialogFooter>
-              <Button variant="ghost" onClick={closeDelete}>
+              <Button ref={cancelDeleteRef} variant="ghost" onClick={closeDelete}>
                 取消
               </Button>
               <Button colorScheme="red" onClick={handleDelete} ml={3}>
