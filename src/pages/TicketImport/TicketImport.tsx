@@ -43,6 +43,7 @@ import {
 } from 'lucide-react'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
+import { useDepartmentStore } from '@/store/departmentStore'
 import { downloadTemplate, parseImportFile } from '@/utils/importUtils'
 import type { ImportResult, ImportResultItem, ImportTicketRow } from '@/types'
 import { CATEGORY_LABELS, PRIORITY_LABELS } from '@/types'
@@ -55,6 +56,7 @@ export default function TicketImport() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const batchImportTickets = useTicketStore((s) => s.batchImportTickets)
   const users = useUserStore((s) => s.users)
+  const departments = useDepartmentStore((s) => s.departments)
   const currentUser = useUserStore((s) => s.currentUser)
 
   const [step, setStep] = useState<ImportStep>('idle')
@@ -162,6 +164,7 @@ export default function TicketImport() {
         parsedRows,
         currentUser.id,
         users,
+        departments,
         (current, total) => {
           setProgress(Math.round((current / total) * 100))
         }
@@ -383,6 +386,7 @@ function DataPreview({ rows }: { rows: ImportTicketRow[] }) {
               <Th>标题</Th>
               <Th>分类</Th>
               <Th>优先级</Th>
+              <Th>指派部门</Th>
               <Th>处理人</Th>
             </Tr>
           </Thead>
@@ -395,6 +399,7 @@ function DataPreview({ rows }: { rows: ImportTicketRow[] }) {
                 </Td>
                 <Td fontSize="sm">{CATEGORY_LABELS[row.category]}</Td>
                 <Td fontSize="sm">{PRIORITY_LABELS[row.priority]}</Td>
+                <Td fontSize="sm">{row.departmentName || '未指派'}</Td>
                 <Td fontSize="sm">{row.assigneeName || '未分配'}</Td>
               </Tr>
             ))}

@@ -1,8 +1,9 @@
-import { Box, Card, CardBody, Heading, Text, SimpleGrid, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td, Icon, Progress } from '@chakra-ui/react'
-import { TrendingUp, PieChart as PieChartIcon, Users, Clock, Star } from 'lucide-react'
+import { Box, Card, CardBody, Heading, Text, SimpleGrid, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td, Icon, Progress, Tabs, TabList, Tab, TabPanels, TabPanel } from '@chakra-ui/react'
+import { TrendingUp, PieChart as PieChartIcon, Users, Clock, Star, Building2 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, LabelList } from 'recharts'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
+import { useDepartmentStore } from '@/store/departmentStore'
 import type { TicketCategory, TicketRecord } from '@/types'
 import { CATEGORY_LABELS, MAX_RATING } from '@/types'
 
@@ -132,8 +133,9 @@ function renderCustomizedLabel({ cx, cy, midAngle, innerRadius, outerRadius, nam
 }
 
 export default function Reports() {
-  const { tickets, records, evaluations, getStats, getEvaluationStats } = useTicketStore()
+  const { tickets, records, evaluations, getStats, getEvaluationStats, getDepartmentStats } = useTicketStore()
   const { users } = useUserStore()
+  const { departments } = useDepartmentStore()
 
   const stats = getStats()
   const overviewStats = [stats.thisMonthCreated, stats.thisMonthClosed, stats.avgResolutionTime, stats.slaComplianceRate]
@@ -143,6 +145,14 @@ export default function Reports() {
 
   const agents = users.filter(u => u.role === 'agent')
   const performanceData = getAgentPerformance(tickets, records, agents)
+  const departmentStats = getDepartmentStats(departments, records)
+  const deptTicketChartData = departmentStats.map(d => ({
+    name: d.departmentName,
+    总工单: d.totalCount,
+    已解决: d.closedCount,
+    处理中: d.inProgressCount,
+    待处理: d.pendingCount,
+  }))
 
   const evaluationStats = getEvaluationStats()
   const evalStatMap = new Map(evaluationStats.map(s => [s.agentId, s]))
@@ -266,70 +276,202 @@ export default function Reports() {
         </Card>
       </SimpleGrid>
 
-      <Card borderRadius="16px">
-        <CardBody>
-          <HStack mb={4}>
-            <Icon as={Users} color="brand.500" boxSize={5} />
-            <Heading size="sm">处理人绩效</Heading>
-          </HStack>
-          <Table variant="simple" size="sm">
-            <Thead>
-              <Tr>
-                <Th>处理人</Th>
-                <Th isNumeric>负责工单</Th>
-                <Th isNumeric>已解决</Th>
-                <Th isNumeric>处理中</Th>
-                <Th isNumeric>待处理</Th>
-                <Th>平均响应</Th>
-                <Th>平均处理</Th>
-                <Th>SLA达标率</Th>
-                <Th isNumeric>平均评价</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {performanceData.map((row) => (
-                <Tr key={row.name}>
-                  <Td fontWeight="600">{row.name}</Td>
-                  <Td isNumeric>{row.total}</Td>
-                  <Td isNumeric>
-                    <Text as="span" color="success.500" fontWeight="600">{row.resolved}</Text>
-                  </Td>
-                  <Td isNumeric>
-                    <Text as="span" color="brand.500" fontWeight="500">{row.inProgress}</Text>
-                  </Td>
-                  <Td isNumeric>
-                    <Text as="span" color="warning.500" fontWeight="500">{row.pending}</Text>
-                  </Td>
-                  <Td>{row.avgResponseTime}</Td>
-                  <Td>{row.avgResolutionTime}</Td>
-                  <Td>
-                    <Text
-                      as="span"
-                      fontWeight="600"
-                      color={row.slaRate === '-' ? 'gray.400' : row.slaRate === '100%' ? 'success.500' : 'warning.500'}
-                    >
-                      {row.slaRate}
-                    </Text>
-                  </Td>
-                  <Td isNumeric>
-                    {(() => {
-                      const s = evalByName.get(row.name)
-                      if (!s || s.count === 0) return <Text color="gray.400">-</Text>
-                      return (
-                        <HStack spacing={1} justify="flex-end">
-                          <Icon as={Star} color="#F5B041" fill="#F5B041" boxSize={3} />
-                          <Text as="span" fontWeight="600" color="#F5B041">{s.averageRating.toFixed(1)}</Text>
-                          <Text as="span" fontSize="xs" color="gray.400">({s.count})</Text>
-                        </HStack>
-                      )
-                    })()}
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </CardBody>
-      </Card>
+      <Tabs variant="enclosed" colorScheme="brand">
+        <TabList>
+          <Tab>
+            <HStack spacing={2}>
+              <Icon as={Building2} size={16} />
+              <Text>部门统计</Text>
+            </HStack>
+          </Tab>
+          <Tab>
+            <HStack spacing={2}>
+              <Icon as={Users} size={16} />
+              <Text>处理人绩效</Text>
+            </HStack>
+          </Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel px={0} pb={0}>
+            <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={5} mb={5}>
+              <Card borderRadius="16px">
+                <CardBody>
+                  <HStack mb={4}>
+                    <Icon as={Building2} color="brand.500" boxSize={5} />
+                    <Heading size="sm">部门工单量统计</Heading>
+                  </HStack>
+                  <Box h={300}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={deptTicketChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#EDF2F7" />
+                        <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#A0AEC0" />
+                        <YAxis tick={{ fontSize: 12 }} stroke="#A0AEC0" />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        />
+                        <Legend />
+                        <Bar dataKey="总工单" fill="#6C5CE7" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="已解决" fill="#00B894" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="处理中" fill="#74B9FF" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="待处理" fill="#FDCB6E" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </CardBody>
+              </Card>
+
+              <Card borderRadius="16px">
+                <CardBody>
+                  <HStack mb={4}>
+                    <Icon as={PieChartIcon} color="brand.500" boxSize={5} />
+                    <Heading size="sm">部门工单分布</Heading>
+                  </HStack>
+                  <Box h={300}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={departmentStats.filter(d => d.totalCount > 0).map(d => ({ name: d.departmentName, value: d.totalCount }))}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={90}
+                          labelLine={false}
+                          label={renderCustomizedLabel}
+                          dataKey="value"
+                        >
+                          {departmentStats.map((_entry, index) => (
+                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </CardBody>
+              </Card>
+            </SimpleGrid>
+
+            <Card borderRadius="16px">
+              <CardBody>
+                <HStack mb={4}>
+                  <Icon as={Building2} color="brand.500" boxSize={5} />
+                  <Heading size="sm">部门处理效率</Heading>
+                </HStack>
+                <Table variant="simple" size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>部门</Th>
+                      <Th isNumeric>总工单</Th>
+                      <Th isNumeric>已解决</Th>
+                      <Th isNumeric>处理中</Th>
+                      <Th isNumeric>待处理</Th>
+                      <Th>平均响应</Th>
+                      <Th>平均处理</Th>
+                      <Th>SLA达标率</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {departmentStats.map((row) => (
+                      <Tr key={row.departmentId}>
+                        <Td fontWeight="600">{row.departmentName}</Td>
+                        <Td isNumeric>{row.totalCount}</Td>
+                        <Td isNumeric>
+                          <Text as="span" color="success.500" fontWeight="600">{row.closedCount}</Text>
+                        </Td>
+                        <Td isNumeric>
+                          <Text as="span" color="brand.500" fontWeight="500">{row.inProgressCount}</Text>
+                        </Td>
+                        <Td isNumeric>
+                          <Text as="span" color="warning.500" fontWeight="500">{row.pendingCount}</Text>
+                        </Td>
+                        <Td>{row.avgResponseTime}</Td>
+                        <Td>{row.avgResolutionTime}</Td>
+                        <Td>
+                          <Text
+                            as="span"
+                            fontWeight="600"
+                            color={row.slaComplianceRate === '-' ? 'gray.400' : row.slaComplianceRate === '100%' ? 'success.500' : 'warning.500'}
+                          >
+                            {row.slaComplianceRate}
+                          </Text>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </CardBody>
+            </Card>
+          </TabPanel>
+
+          <TabPanel px={0} pb={0}>
+            <Card borderRadius="16px">
+              <CardBody>
+                <HStack mb={4}>
+                  <Icon as={Users} color="brand.500" boxSize={5} />
+                  <Heading size="sm">处理人绩效</Heading>
+                </HStack>
+                <Table variant="simple" size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>处理人</Th>
+                      <Th isNumeric>负责工单</Th>
+                      <Th isNumeric>已解决</Th>
+                      <Th isNumeric>处理中</Th>
+                      <Th isNumeric>待处理</Th>
+                      <Th>平均响应</Th>
+                      <Th>平均处理</Th>
+                      <Th>SLA达标率</Th>
+                      <Th isNumeric>平均评价</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {performanceData.map((row) => (
+                      <Tr key={row.name}>
+                        <Td fontWeight="600">{row.name}</Td>
+                        <Td isNumeric>{row.total}</Td>
+                        <Td isNumeric>
+                          <Text as="span" color="success.500" fontWeight="600">{row.resolved}</Text>
+                        </Td>
+                        <Td isNumeric>
+                          <Text as="span" color="brand.500" fontWeight="500">{row.inProgress}</Text>
+                        </Td>
+                        <Td isNumeric>
+                          <Text as="span" color="warning.500" fontWeight="500">{row.pending}</Text>
+                        </Td>
+                        <Td>{row.avgResponseTime}</Td>
+                        <Td>{row.avgResolutionTime}</Td>
+                        <Td>
+                          <Text
+                            as="span"
+                            fontWeight="600"
+                            color={row.slaRate === '-' ? 'gray.400' : row.slaRate === '100%' ? 'success.500' : 'warning.500'}
+                          >
+                            {row.slaRate}
+                          </Text>
+                        </Td>
+                        <Td isNumeric>
+                          {(() => {
+                            const s = evalByName.get(row.name)
+                            if (!s || s.count === 0) return <Text color="gray.400">-</Text>
+                            return (
+                              <HStack spacing={1} justify="flex-end">
+                                <Icon as={Star} color="#F5B041" fill="#F5B041" boxSize={3} />
+                                <Text as="span" fontWeight="600" color="#F5B041">{s.averageRating.toFixed(1)}</Text>
+                                <Text as="span" fontSize="xs" color="gray.400">({s.count})</Text>
+                              </HStack>
+                            )
+                          })()}
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </CardBody>
+            </Card>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
 
       <Card borderRadius="16px">
         <CardBody>

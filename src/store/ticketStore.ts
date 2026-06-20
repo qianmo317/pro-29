@@ -33,6 +33,7 @@ interface TicketState {
   updateTicket: (id: string, updates: Partial<Ticket>) => void
   editTicket: (id: string, updates: EditableTicketFields, operatorId: string) => void
   assignTicket: (id: string, assigneeId: string, operatorId: string) => void
+  assignDepartment: (id: string, departmentId: string, operatorId: string) => void
   changeStatus: (id: string, status: TicketStatus, operatorId: string, content: string) => void
   addRecord: (ticketId: string, operatorId: string, action: string, content: string) => void
   getTicketById: (id: string) => Ticket | undefined
@@ -51,10 +52,22 @@ interface TicketState {
     avgResolutionTime: string
     slaComplianceRate: string
   }
+  getDepartmentStats: (departments: { id: string; name: string }[], records: TicketRecord[]) => Array<{
+    departmentId: string
+    departmentName: string
+    totalCount: number
+    pendingCount: number
+    inProgressCount: number
+    closedCount: number
+    avgResolutionTime: string
+    slaComplianceRate: string
+    avgResponseTime: string
+  }>
   batchImportTickets: (
     rows: ImportTicketRow[],
     creatorId: string,
     users: { id: string; name: string }[],
+    departments: { id: string; name: string }[],
     onProgress?: (current: number, total: number) => void,
   ) => Promise<ImportResult>
   mergeTickets: (mainTicketId: string, mergedTicketIds: string[], operatorId: string) => void
@@ -67,6 +80,7 @@ export interface TicketFilters {
   status?: TicketStatus
   priority?: TicketPriority
   category?: TicketCategory
+  departmentId?: string
   search?: string
 }
 
@@ -91,6 +105,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
         ...t,
         mergedToId: t.mergedToId ?? null,
         mergedTicketIds: t.mergedTicketIds ?? [],
+        departmentId: t.departmentId ?? null,
       }))
       set({ tickets: normalizedTickets })
     }
@@ -106,19 +121,20 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     const newTicket: Ticket = {
       ...ticketData,
       id,
-      status: 'pending',
+      status: ticketData.assigneeId ? 'assigned' : 'pending',
       createdAt: now,
       updatedAt: now,
       slaDeadline: getSLADeadline(ticketData.priority, now),
       mergedToId: null,
       mergedTicketIds: [],
+      departmentId: ticketData.departmentId ?? null,
     }
     const newRecord: TicketRecord = {
       id: `r_${Date.now()}`,
       ticketId: id,
       operatorId: ticketData.creatorId,
       action: 'created',
-      content: '创建工单',
+      content: ticketData.departmentId ? '创建工单，已指派部门' : '创建工单',
       createdAt: now,
     }
     set((state) => {
@@ -210,6 +226,29 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     useNotificationStore.getState().createNotificationsForFollowers(id, record, operatorId)
   },
 
+  assignDepartment: (id, departmentId, operatorId) => {
+    if (get().isTicketMerged(id)) return
+    const now = new Date().toISOString()
+    const record: TicketRecord = {
+      id: `r_${Date.now()}`,
+      ticketId: id,
+      operatorId,
+      action: 'department_assigned',
+      content: `指派到部门`,
+      createdAt: now,
+    }
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        t.id === id ? { ...t, departmentId, updatedAt: now } : t
+      )
+      const records = [record, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+    useNotificationStore.getState().createNotificationsForFollowers(id, record, operatorId)
+  },
+
   changeStatus: (id, status, operatorId, content) => {
     if (get().isTicketMerged(id)) return
     if (status === 'merged') return
@@ -277,6 +316,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       if (filters.status && t.status !== filters.status) return false
       if (filters.priority && t.priority !== filters.priority) return false
       if (filters.category && t.category !== filters.category) return false
+      if (filters.departmentId && t.departmentId !== filters.departmentId) return false
       if (filters.search) {
         const s = filters.search.toLowerCase()
         return t.title.toLowerCase().includes(s) || t.id.toLowerCase().includes(s)
@@ -392,7 +432,79 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     }
   },
 
-  batchImportTickets: async (rows, creatorId, users, onProgress) => {
+  getDepartmentStats: (departments, records) => {
+    const { tickets } = get()
+    return departments.map(dept => {
+      const deptTickets = tickets.filter(t => t.departmentId === dept.id)
+      const totalCount = deptTickets.length
+      const pendingCount = deptTickets.filter(t => t.status === 'pending' || t.status === 'assigned').length
+      const inProgressCount = deptTickets.filter(t => t.status === 'in_progress').length
+      const closedCount = deptTickets.filter(t => t.status === 'closed').length
+
+      const resolved = deptTickets.filter(t => t.status === 'closed' || t.status === 'rejected')
+      let avgResolutionTime = '-'
+      if (resolved.length > 0) {
+        const totalHours = resolved.reduce((sum, t) => {
+          const hours = (new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime()) / 3600000
+          return sum + Math.max(0, hours)
+        }, 0)
+        const avg = totalHours / resolved.length
+        if (avg < 1) {
+          avgResolutionTime = `${Math.round(avg * 60)}分钟`
+        } else if (avg < 24) {
+          avgResolutionTime = `${avg.toFixed(1)}小时`
+        } else {
+          avgResolutionTime = `${(avg / 24).toFixed(1)}天`
+        }
+      }
+
+      let slaComplianceRate = '-'
+      if (resolved.length > 0) {
+        const onTime = resolved.filter(t => new Date(t.updatedAt) <= new Date(t.slaDeadline))
+        slaComplianceRate = `${Math.round((onTime.length / resolved.length) * 100)}%`
+      }
+
+      let totalResponseHours = 0
+      let responseCount = 0
+      deptTickets.forEach(ticket => {
+        const ticketRecords = records.filter(r => r.ticketId === ticket.id)
+        const assignRecord = ticketRecords.find(r => r.action === 'assigned' || r.action === 'department_assigned')
+        const startRecord = ticketRecords.find(r => r.action === 'status_changed' && r.content.includes('开始处理'))
+        if (assignRecord && startRecord) {
+          const hours = (new Date(startRecord.createdAt).getTime() - new Date(assignRecord.createdAt).getTime()) / 3600000
+          if (hours >= 0) {
+            totalResponseHours += hours
+            responseCount++
+          }
+        }
+      })
+      let avgResponseTime = '-'
+      if (responseCount > 0) {
+        const avg = totalResponseHours / responseCount
+        if (avg < 1) {
+          avgResponseTime = `${Math.round(avg * 60)}分钟`
+        } else if (avg < 24) {
+          avgResponseTime = `${avg.toFixed(1)}小时`
+        } else {
+          avgResponseTime = `${(avg / 24).toFixed(1)}天`
+        }
+      }
+
+      return {
+        departmentId: dept.id,
+        departmentName: dept.name,
+        totalCount,
+        pendingCount,
+        inProgressCount,
+        closedCount,
+        avgResolutionTime,
+        slaComplianceRate,
+        avgResponseTime,
+      }
+    })
+  },
+
+  batchImportTickets: async (rows, creatorId, users, departments, onProgress) => {
     const items: ImportResultItem[] = []
     let successCount = 0
     let failedCount = 0
@@ -421,6 +533,24 @@ export const useTicketStore = create<TicketState>((set, get) => ({
           continue
         }
 
+        let departmentId: string | null = null
+        if (row.departmentName?.trim()) {
+          const dept = departments.find(
+            (d) => d.name.trim() === row.departmentName!.trim()
+          )
+          if (!dept) {
+            failedCount++
+            items.push({
+              rowIndex: i + 1,
+              success: false,
+              error: `部门 "${row.departmentName}" 不存在`,
+              data: row,
+            })
+            continue
+          }
+          departmentId = dept.id
+        }
+
         let assigneeId: string | null = null
         if (row.assigneeName?.trim()) {
           const user = users.find(
@@ -446,6 +576,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
           priority: row.priority,
           creatorId,
           assigneeId,
+          departmentId,
           knowledgeId: null,
         })
 

@@ -1,12 +1,21 @@
-import type { User, Ticket, TicketRecord, TicketEvaluation, KnowledgeArticle, SLAConfig, TicketTemplate } from '@/types'
+import type { User, Ticket, TicketRecord, TicketEvaluation, KnowledgeArticle, SLAConfig, TicketTemplate, Department } from '@/types'
+
+export const MOCK_DEPARTMENTS: Department[] = [
+  { id: 'd1', name: '网络组', description: '负责网络基础设施、VPN、WiFi等', color: '#3182CE' },
+  { id: 'd2', name: '硬件组', description: '负责办公设备、电脑、打印机等硬件运维', color: '#E53E3E' },
+  { id: 'd3', name: '安全组', description: '负责信息安全、防火墙、权限管理等', color: '#D69E2E' },
+  { id: 'd4', name: '软件组', description: '负责软件系统、邮件、OA等应用运维', color: '#805AD5' },
+]
 
 export const MOCK_USERS: User[] = [
-  { id: 'u1', name: '张管理', role: 'admin', avatar: '', email: 'admin@company.com', password: 'admin123' },
-  { id: 'u2', name: '李技术', role: 'agent', avatar: '', email: 'li@company.com', password: 'agent123' },
-  { id: 'u3', name: '王运维', role: 'agent', avatar: '', email: 'wang@company.com', password: 'agent123' },
-  { id: 'u4', name: '赵开发', role: 'agent', avatar: '', email: 'zhao@company.com', password: 'agent123' },
-  { id: 'u5', name: '孙提交', role: 'submitter', avatar: '', email: 'sun@company.com', password: 'user123' },
-  { id: 'u6', name: '周用户', role: 'submitter', avatar: '', email: 'zhou@company.com', password: 'user123' },
+  { id: 'u1', name: '张管理', role: 'admin', avatar: '', email: 'admin@company.com', password: 'admin123', departmentId: null },
+  { id: 'u2', name: '李技术', role: 'agent', avatar: '', email: 'li@company.com', password: 'agent123', departmentId: 'd1' },
+  { id: 'u3', name: '王运维', role: 'agent', avatar: '', email: 'wang@company.com', password: 'agent123', departmentId: 'd2' },
+  { id: 'u4', name: '赵开发', role: 'agent', avatar: '', email: 'zhao@company.com', password: 'agent123', departmentId: 'd4' },
+  { id: 'u7', name: '钱安全', role: 'agent', avatar: '', email: 'qian@company.com', password: 'agent123', departmentId: 'd3' },
+  { id: 'u8', name: '吴网络', role: 'agent', avatar: '', email: 'wu@company.com', password: 'agent123', departmentId: 'd1' },
+  { id: 'u5', name: '孙提交', role: 'submitter', avatar: '', email: 'sun@company.com', password: 'user123', departmentId: null },
+  { id: 'u6', name: '周用户', role: 'submitter', avatar: '', email: 'zhou@company.com', password: 'user123', departmentId: null },
 ]
 
 const now = new Date()
@@ -17,73 +26,73 @@ export const MOCK_TICKETS: Ticket[] = [
   {
     id: 'TK-001', title: 'VPN 连接频繁断开', description: '最近一周 VPN 连接每隔 2-3 小时会自动断开，影响远程办公效率。已尝试重新安装客户端但问题依旧。',
     category: 'network', priority: 'high', status: 'in_progress', creatorId: 'u5',
-    assigneeId: 'u2', createdAt: h(72), updatedAt: h(4), slaDeadline: f(2), knowledgeId: null,
+    assigneeId: 'u2', departmentId: 'd1', createdAt: h(72), updatedAt: h(4), slaDeadline: f(2), knowledgeId: null,
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-002', title: '新员工账号权限申请', description: '新入职员工陈明需要开通 CRM 系统、邮件系统和 VPN 的访问权限，部门为市场部。',
     category: 'access', priority: 'medium', status: 'assigned', creatorId: 'u6',
-    assigneeId: 'u3', createdAt: h(48), updatedAt: h(12), slaDeadline: f(6), knowledgeId: null,
+    assigneeId: 'u7', departmentId: 'd3', createdAt: h(48), updatedAt: h(12), slaDeadline: f(6), knowledgeId: null,
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-003', title: '办公电脑蓝屏故障', description: '财务部 3 台电脑在运行 SAP 系统时频繁蓝屏，错误代码：CRITICAL_PROCESS_DIED。',
     category: 'hardware', priority: 'critical', status: 'pending', creatorId: 'u5',
-    assigneeId: null, createdAt: h(6), updatedAt: h(6), slaDeadline: h(-2), knowledgeId: null,
+    assigneeId: null, departmentId: 'd2', createdAt: h(6), updatedAt: h(6), slaDeadline: h(-2), knowledgeId: null,
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-004', title: '邮件服务器响应缓慢', description: '近两天邮件收发延迟严重，平均延迟超过 30 分钟，部分紧急邮件无法及时送达。',
     category: 'software', priority: 'high', status: 'in_progress', creatorId: 'u6',
-    assigneeId: 'u4', createdAt: h(36), updatedAt: h(2), slaDeadline: h(-1), knowledgeId: 'k1',
+    assigneeId: 'u4', departmentId: 'd4', createdAt: h(36), updatedAt: h(2), slaDeadline: h(-1), knowledgeId: 'k1',
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-005', title: '防火墙规则更新请求', description: '因业务需要，需开放端口 8443 供新上线的外部 API 服务使用，目标 IP：10.0.1.100。',
     category: 'security', priority: 'medium', status: 'waiting_confirmation', creatorId: 'u5',
-    assigneeId: 'u2', createdAt: h(96), updatedAt: h(8), slaDeadline: f(12), knowledgeId: null,
+    assigneeId: 'u7', departmentId: 'd3', createdAt: h(96), updatedAt: h(8), slaDeadline: f(12), knowledgeId: null,
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-006', title: '打印机驱动兼容性问题', description: '升级 Windows 11 后，HP LaserJet Pro M404n 打印机无法正常工作，驱动安装失败。',
     category: 'hardware', priority: 'low', status: 'closed', creatorId: 'u6',
-    assigneeId: 'u3', createdAt: h(168), updatedAt: h(24), slaDeadline: h(24), knowledgeId: 'k2',
+    assigneeId: 'u3', departmentId: 'd2', createdAt: h(168), updatedAt: h(24), slaDeadline: h(24), knowledgeId: 'k2',
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-007', title: '内部 wiki 系统无法登录', description: 'Confluence 系统登录时提示认证失败，但密码确认无误，已尝试清除缓存和换浏览器。',
     category: 'software', priority: 'medium', status: 'in_progress', creatorId: 'u5',
-    assigneeId: 'u4', createdAt: h(24), updatedAt: h(1), slaDeadline: f(8), knowledgeId: 'k3',
+    assigneeId: 'u4', departmentId: 'd4', createdAt: h(24), updatedAt: h(1), slaDeadline: f(8), knowledgeId: 'k3',
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-008', title: 'WiFi 信号覆盖不足', description: '3 楼东侧会议室 WiFi 信号极弱，视频会议时频繁卡顿，影响客户演示。',
     category: 'network', priority: 'medium', status: 'assigned', creatorId: 'u6',
-    assigneeId: 'u2', createdAt: h(18), updatedAt: h(6), slaDeadline: f(18), knowledgeId: null,
+    assigneeId: 'u8', departmentId: 'd1', createdAt: h(18), updatedAt: h(6), slaDeadline: f(18), knowledgeId: null,
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-009', title: '数据备份异常告警', description: '备份系统发出异常告警，最近一次完整备份失败，需尽快排查原因并恢复备份任务。',
     category: 'other', priority: 'critical', status: 'in_progress', creatorId: 'u5',
-    assigneeId: 'u3', createdAt: h(3), updatedAt: h(1), slaDeadline: f(1), knowledgeId: null,
+    assigneeId: 'u3', departmentId: 'd2', createdAt: h(3), updatedAt: h(1), slaDeadline: f(1), knowledgeId: null,
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-010', title: 'SSL 证书即将过期', description: '公司官网 SSL 证书将于 7 天后过期，需要续签并更新服务器配置。',
     category: 'security', priority: 'high', status: 'pending', creatorId: 'u6',
-    assigneeId: null, createdAt: h(1), updatedAt: h(1), slaDeadline: f(5), knowledgeId: 'k4',
+    assigneeId: null, departmentId: 'd3', createdAt: h(1), updatedAt: h(1), slaDeadline: f(5), knowledgeId: 'k4',
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-011', title: 'OA 系统流程审批异常', description: '报销审批流程在部门经理审批节点后卡住，无法流转到下一环节。',
     category: 'software', priority: 'high', status: 'rejected', creatorId: 'u5',
-    assigneeId: 'u4', createdAt: h(120), updatedAt: h(48), slaDeadline: h(24), knowledgeId: null,
+    assigneeId: 'u4', departmentId: 'd4', createdAt: h(120), updatedAt: h(48), slaDeadline: h(24), knowledgeId: null,
     mergedToId: null, mergedTicketIds: [],
   },
   {
     id: 'TK-012', title: '新办公区域网络布线', description: '5 楼新装修区域需要网络布线，共计 20 个工位和 2 个会议室。',
     category: 'network', priority: 'low', status: 'closed', creatorId: 'u6',
-    assigneeId: 'u2', createdAt: h(336), updatedAt: h(72), slaDeadline: h(72), knowledgeId: null,
+    assigneeId: 'u2', departmentId: 'd1', createdAt: h(336), updatedAt: h(72), slaDeadline: h(72), knowledgeId: null,
     mergedToId: null, mergedTicketIds: [],
   },
 ]

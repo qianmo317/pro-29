@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useTicketStore, type TicketFilters } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
+import { useDepartmentStore } from '@/store/departmentStore'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -64,8 +65,9 @@ function formatDateTime(iso: string): string {
 
 export default function TicketList() {
   const navigate = useNavigate()
-  const { tickets, mergeTickets, isTicketMerged } = useTicketStore()
+  const { tickets, mergeTickets, isTicketMerged, getFilteredTickets } = useTicketStore()
   const { users, currentUser } = useUserStore()
+  const { departments, getDepartmentName } = useDepartmentStore()
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
 
@@ -77,16 +79,7 @@ export default function TicketList() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
 
   const filteredTickets = useMemo(() => {
-    const result = tickets.filter(t => {
-      if (filters.status && t.status !== filters.status) return false
-      if (filters.priority && t.priority !== filters.priority) return false
-      if (filters.category && t.category !== filters.category) return false
-      if (filters.search) {
-        const s = filters.search.toLowerCase()
-        return t.title.toLowerCase().includes(s) || t.id.toLowerCase().includes(s)
-      }
-      return true
-    })
+    const result = getFilteredTickets(filters)
 
     result.sort((a, b) => {
       let comparison = 0
@@ -105,7 +98,7 @@ export default function TicketList() {
     })
 
     return result
-  }, [tickets, filters, sortField, sortOrder])
+  }, [getFilteredTickets, filters, sortField, sortOrder])
 
   const totalPages = Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
@@ -273,6 +266,17 @@ export default function TicketList() {
             <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
           ))}
         </Select>
+        <Select
+          placeholder="全部部门"
+          value={filters.departmentId || ''}
+          onChange={e => updateFilter('departmentId', e.target.value || undefined)}
+          borderRadius="12px"
+          w="150px"
+        >
+          {departments.map(d => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </Select>
       </HStack>
 
       <Card borderRadius="16px">
@@ -303,6 +307,7 @@ export default function TicketList() {
                     </HStack>
                   </Th>
                   <Th>状态</Th>
+                  <Th>所属部门</Th>
                   <Th>处理人</Th>
                   <Th
                     cursor="pointer"
@@ -331,7 +336,7 @@ export default function TicketList() {
               <Tbody>
                 {pageTickets.length === 0 ? (
                   <Tr>
-                    <Td colSpan={9} textAlign="center" py={12}>
+                    <Td colSpan={10} textAlign="center" py={12}>
                       <Text color="gray.400" fontSize="md">暂无匹配的工单</Text>
                     </Td>
                   </Tr>
@@ -374,6 +379,7 @@ export default function TicketList() {
                           </HStack>
                         </Td>
                         <Td><StatusBadge status={ticket.status} size="sm" /></Td>
+                        <Td>{getDepartmentName(ticket.departmentId)}</Td>
                         <Td>{getUserName(ticket.assigneeId)}</Td>
                         <Td fontSize="sm" color="gray.500">{formatDateTime(ticket.createdAt)}</Td>
                         <Td><SLAIndicator slaDeadline={ticket.slaDeadline} size="sm" /></Td>

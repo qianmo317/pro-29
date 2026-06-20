@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
+import { useDepartmentStore } from '@/store/departmentStore'
 import { useNotificationStore } from '@/store/notificationStore'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
@@ -63,12 +64,14 @@ export default function TicketDetail() {
   const navigate = useNavigate()
   const toast = useToast()
   const ticketStore = useTicketStore()
-  const { users, currentUser } = useUserStore()
+  const { users, currentUser, getAgentsByDepartment } = useUserStore()
+  const { departments, getDepartmentName } = useDepartmentStore()
   const { isFollowing, followTicket, unfollowTicket } = useNotificationStore()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure()
 
   const [assigneeId, setAssigneeId] = useState('')
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
   const [comment, setComment] = useState('')
   const [mergeSearch, setMergeSearch] = useState('')
   const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([])
@@ -174,18 +177,51 @@ export default function TicketDetail() {
     )
   }
 
+  useEffect(() => {
+    if (ticket?.departmentId) {
+      setSelectedDepartmentId(ticket.departmentId)
+    }
+  }, [ticket?.id])
+
   const getUserName = (userId: string | null) => {
     if (!userId) return '未分配'
     const user = users.find(u => u.id === userId)
     return user ? user.name : '未知'
   }
 
-  const agents = users.filter(u => u.role === 'agent' || u.role === 'admin')
+  const agents = useMemo(() => {
+    if (selectedDepartmentId) {
+      return getAgentsByDepartment(selectedDepartmentId)
+    }
+    return users.filter(u => u.role === 'agent' || u.role === 'admin')
+  }, [users, selectedDepartmentId, getAgentsByDepartment])
+
+  const handleDepartmentChange = (deptId: string) => {
+    setSelectedDepartmentId(deptId)
+    if (deptId && assigneeId) {
+      const deptAgentIds = getAgentsByDepartment(deptId).map(u => u.id)
+      if (!deptAgentIds.includes(assigneeId)) {
+        setAssigneeId('')
+      }
+    }
+  }
+
+  const handleAssignDepartment = () => {
+    if (!selectedDepartmentId || isMerged) {
+      toast({ title: '请选择部门', status: 'warning', duration: 2000 })
+      return
+    }
+    ticketStore.assignDepartment(ticket.id, selectedDepartmentId, currentUser.id)
+    toast({ title: '已指派部门', status: 'success', duration: 2000 })
+  }
 
   const handleAssign = () => {
     if (!assigneeId || isMerged) {
       toast({ title: '请选择处理人', status: 'warning', duration: 2000 })
       return
+    }
+    if (selectedDepartmentId) {
+      ticketStore.assignDepartment(ticket.id, selectedDepartmentId, currentUser.id)
     }
     ticketStore.assignTicket(ticket.id, assigneeId, currentUser.id)
     setAssigneeId('')
@@ -303,19 +339,52 @@ export default function TicketDetail() {
       case 'pending':
         return (
           <VStack align="stretch" spacing={3}>
-            <HStack>
+            <VStack align="stretch" spacing={2}>
               <Select
-                placeholder="选择处理人"
-                value={assigneeId}
-                onChange={e => setAssigneeId(e.target.value)}
+                placeholder="选择部门（先选部门可筛选人员）"
+                value={selectedDepartmentId}
+                onChange={e => handleDepartmentChange(e.target.value)}
                 borderRadius="8px"
               >
-                {agents.map(agent => (
-                  <option key={agent.id} value={agent.id}>{agent.name}</option>
+                {departments.map(dept => (
+                  <option key={dept.id} value={dept.id}>{dept.name}</option>
                 ))}
               </Select>
-              <Button colorScheme="blue" onClick={handleAssign} flexShrink={0}>
-                分配
+              <HStack>
+                <Select
+                  placeholder={selectedDepartmentId ? '选择部门内处理人（可选）' : '选择处理人（可选）'}
+                  value={assigneeId}
+                  onChange={e => setAssigneeId(e.target.value)}
+                  borderRadius="8px"
+                  flex={1}
+                  isDisabled={selectedDepartmentId && agents.length === 0}
+                >
+                  {agents.map(agent => (
+                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                  ))}
+                </Select>
+              </HStack>
+              {selectedDepartmentId && agents.length === 0 && (
+                <Text fontSize="xs" color="orange.500">该部门暂无处理人</Text>
+              )}
+            </VStack>
+            <HStack>
+              <Button
+                variant="outline"
+                colorScheme="blue"
+                onClick={handleAssignDepartment}
+                flex={1}
+                isDisabled={!selectedDepartmentId}
+              >
+                仅指派部门
+              </Button>
+              <Button
+                colorScheme="blue"
+                onClick={handleAssign}
+                flex={1}
+                isDisabled={!assigneeId}
+              >
+                分配处理人
               </Button>
             </HStack>
             <Divider />
@@ -590,6 +659,10 @@ export default function TicketDetail() {
                     <HStack spacing={2}>
                       <Text fontSize="sm" color="gray.500" w="80px" flexShrink={0}>处理人</Text>
                       <Text fontSize="sm">{getUserName(ticket.assigneeId)}</Text>
+                    </HStack>
+                    <HStack spacing={2}>
+                      <Text fontSize="sm" color="gray.500" w="80px" flexShrink={0}>所属部门</Text>
+                      <Text fontSize="sm">{getDepartmentName(ticket.departmentId)}</Text>
                     </HStack>
                     <HStack spacing={2}>
                       <Text fontSize="sm" color="gray.500" w="80px" flexShrink={0}>创建时间</Text>

@@ -3,6 +3,13 @@ export type TicketPriority = 'critical' | 'high' | 'medium' | 'low'
 export type TicketCategory = 'network' | 'hardware' | 'software' | 'security' | 'access' | 'other'
 export type UserRole = 'admin' | 'agent' | 'submitter'
 
+export interface Department {
+  id: string
+  name: string
+  description: string
+  color: string
+}
+
 export interface User {
   id: string
   name: string
@@ -10,6 +17,7 @@ export interface User {
   avatar: string
   email: string
   password: string
+  departmentId: string | null
 }
 
 export interface Ticket {
@@ -21,6 +29,7 @@ export interface Ticket {
   status: TicketStatus
   creatorId: string
   assigneeId: string | null
+  departmentId: string | null
   createdAt: string
   updatedAt: string
   slaDeadline: string
@@ -127,6 +136,7 @@ export interface ImportTicketRow {
   category: TicketCategory
   priority: TicketPriority
   assigneeName?: string
+  departmentName?: string
 }
 
 export interface ImportResultItem {
@@ -149,6 +159,7 @@ export const IMPORT_TEMPLATE_HEADERS = [
   { key: 'description', label: '描述', required: true },
   { key: 'category', label: '分类', required: true },
   { key: 'priority', label: '优先级', required: true },
+  { key: 'departmentName', label: '指派部门', required: false },
   { key: 'assigneeName', label: '处理人', required: false },
 ]
 
@@ -195,6 +206,7 @@ export interface ScheduledTicket {
   priority: TicketPriority
   creatorId: string
   assigneeId: string | null
+  departmentId: string | null
   scheduledTime: string
   status: ScheduledTicketStatus
   createdAt: string

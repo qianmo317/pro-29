@@ -32,6 +32,7 @@ import { ArrowLeft, Send, BookOpen, FileText, ChevronDown, CalendarClock } from 
 import { useTicketStore } from '@/store/ticketStore'
 import { useScheduledTicketStore } from '@/store/scheduledTicketStore'
 import { useUserStore } from '@/store/userStore'
+import { useDepartmentStore } from '@/store/departmentStore'
 import { useKnowledgeStore } from '@/store/knowledgeStore'
 import { useTemplateStore } from '@/store/templateStore'
 import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS } from '@/types'
@@ -43,6 +44,8 @@ export default function TicketCreate() {
   const addTicket = useTicketStore((s) => s.addTicket)
   const addScheduledTicket = useScheduledTicketStore((s) => s.addScheduledTicket)
   const users = useUserStore((s) => s.users)
+  const getAgentsByDepartment = useUserStore((s) => s.getAgentsByDepartment)
+  const departments = useDepartmentStore((s) => s.departments)
   const currentUser = useUserStore((s) => s.currentUser)
   const searchArticles = useKnowledgeStore((s) => s.searchArticles)
   const templates = useTemplateStore((s) => s.templates)
@@ -51,13 +54,30 @@ export default function TicketCreate() {
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState<TicketCategory>('software')
   const [priority, setPriority] = useState<TicketPriority>('medium')
+  const [departmentId, setDepartmentId] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<TicketTemplate | null>(null)
   const [createMode, setCreateMode] = useState<'immediate' | 'scheduled'>('immediate')
   const [scheduledTime, setScheduledTime] = useState('')
 
-  const agents = useMemo(() => users.filter((u) => u.role === 'agent'), [users])
+  const agents = useMemo(() => {
+    if (departmentId) {
+      return getAgentsByDepartment(departmentId)
+    }
+    return users.filter((u) => u.role === 'agent')
+  }, [users, departmentId, getAgentsByDepartment])
+
+  const handleDepartmentChange = (deptId: string) => {
+    setDepartmentId(deptId)
+    if (deptId && assigneeId) {
+      const deptAgentIds = getAgentsByDepartment(deptId).map(u => u.id)
+      if (!deptAgentIds.includes(assigneeId)) {
+        setAssigneeId('')
+      }
+    }
+  }
+
   const activeTemplates = useMemo(() => templates.filter((t) => t.isActive), [templates])
   const recommendedArticles = useMemo(() => {
     if (!title.trim()) return []
@@ -131,6 +151,7 @@ export default function TicketCreate() {
         priority,
         creatorId: currentUser.id,
         assigneeId: assigneeId || null,
+        departmentId: departmentId || null,
         scheduledTime: new Date(scheduledTime).toISOString(),
       })
 
@@ -153,6 +174,7 @@ export default function TicketCreate() {
       priority,
       creatorId: currentUser.id,
       assigneeId: assigneeId || null,
+      departmentId: departmentId || null,
       knowledgeId: null,
     })
 
@@ -309,16 +331,33 @@ export default function TicketCreate() {
               </FormControl>
 
               <FormControl>
-                <FormLabel>指派处理人</FormLabel>
+                <FormLabel>指派部门</FormLabel>
+                <Select
+                  value={departmentId}
+                  onChange={(e) => handleDepartmentChange(e.target.value)}
+                  placeholder="请选择部门（可选）"
+                >
+                  {departments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>指派处理人{departmentId && <Badge ml={2} colorScheme="brand" variant="subtle" fontSize="xs">{departmentId ? '部门内成员' : ''}</Badge>}</FormLabel>
                 <Select
                   value={assigneeId}
                   onChange={(e) => setAssigneeId(e.target.value)}
-                  placeholder="请选择处理人"
+                  placeholder={departmentId ? '请选择部门内处理人（可选）' : '请选择处理人（可选）'}
+                  isDisabled={departmentId && agents.length === 0}
                 >
                   {agents.map((agent) => (
                     <option key={agent.id} value={agent.id}>{agent.name}</option>
                   ))}
                 </Select>
+                {departmentId && agents.length === 0 && (
+                  <Text fontSize="xs" color="orange.500" mt={1}>该部门暂无处理人</Text>
+                )}
               </FormControl>
 
               <FormControl>

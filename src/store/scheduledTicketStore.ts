@@ -15,6 +15,7 @@ interface ScheduledTicketInput {
   priority: TicketPriority
   creatorId: string
   assigneeId: string | null
+  departmentId: string | null
   scheduledTime: string
 }
 
@@ -38,7 +39,13 @@ export const useScheduledTicketStore = create<ScheduledTicketState>((set, get) =
   initialize: () => {
     const savedTickets = loadFromStorage<ScheduledTicket[]>(STORAGE_KEY)
     const savedNextId = loadFromStorage<number>(STORAGE_KEY_NEXT_ID)
-    if (savedTickets) set({ scheduledTickets: savedTickets })
+    if (savedTickets) {
+      const normalized = savedTickets.map(s => ({
+        ...s,
+        departmentId: s.departmentId ?? null,
+      }))
+      set({ scheduledTickets: normalized })
+    }
     if (savedNextId) set({ nextId: savedNextId })
   },
 
@@ -53,6 +60,7 @@ export const useScheduledTicketStore = create<ScheduledTicketState>((set, get) =
       createdAt: now,
       createdTicketId: null,
       cancelledAt: null,
+      departmentId: data.departmentId ?? null,
     }
     set((state) => {
       const scheduledTickets = [newScheduled, ...state.scheduledTickets]
@@ -94,6 +102,7 @@ export const useScheduledTicketStore = create<ScheduledTicketState>((set, get) =
         priority: s.priority,
         creatorId: s.creatorId,
         assigneeId: s.assigneeId,
+        departmentId: s.departmentId,
         knowledgeId: null,
       })
       return { id: s.id, createdTicketId: newTicket.id }
