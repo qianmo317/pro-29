@@ -1,10 +1,10 @@
-import { Box, Card, CardBody, Heading, Text, SimpleGrid, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td, Icon } from '@chakra-ui/react'
-import { TrendingUp, PieChart as PieChartIcon, Users, Clock } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { Box, Card, CardBody, Heading, Text, SimpleGrid, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td, Icon, Progress } from '@chakra-ui/react'
+import { TrendingUp, PieChart as PieChartIcon, Users, Clock, Star } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, LabelList } from 'recharts'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
 import type { TicketCategory, TicketRecord } from '@/types'
-import { CATEGORY_LABELS } from '@/types'
+import { CATEGORY_LABELS, MAX_RATING } from '@/types'
 
 const OVERVIEW_CONFIG = [
   { label: '本月新增工单', icon: TrendingUp, gradient: 'linear-gradient(135deg, #6C5CE7, #A29BFE)' },
@@ -132,7 +132,7 @@ function renderCustomizedLabel({ cx, cy, midAngle, innerRadius, outerRadius, nam
 }
 
 export default function Reports() {
-  const { tickets, records, getStats } = useTicketStore()
+  const { tickets, records, evaluations, getStats, getEvaluationStats } = useTicketStore()
   const { users } = useUserStore()
 
   const stats = getStats()
@@ -143,6 +143,34 @@ export default function Reports() {
 
   const agents = users.filter(u => u.role === 'agent')
   const performanceData = getAgentPerformance(tickets, records, agents)
+
+  const evaluationStats = getEvaluationStats()
+  const evalStatMap = new Map(evaluationStats.map(s => [s.agentId, s]))
+  const evalByName = new Map(
+    agents.map(agent => [agent.name, evalStatMap.get(agent.id)])
+  )
+  const totalEvaluations = evaluations.length
+  const overallAvgRating = totalEvaluations > 0
+    ? evaluations.reduce((sum, e) => sum + e.rating, 0) / totalEvaluations
+    : 0
+  const ratingBreakdown = agents
+    .map(agent => {
+      const s = evalStatMap.get(agent.id)
+      if (!s || s.count === 0) return null
+      return {
+        name: agent.name,
+        averageRating: s.averageRating,
+        count: s.count,
+        distribution: s.distribution,
+      }
+    })
+    .filter((d): d is { name: string; averageRating: number; count: number; distribution: Record<number, number> } => d !== null)
+    .sort((a, b) => b.averageRating - a.averageRating)
+  const ratingChartData = ratingBreakdown.map(d => ({
+    name: d.name,
+    评分: Number(d.averageRating.toFixed(1)),
+    count: d.count,
+  }))
 
   return (
     <Box p={6}>
@@ -255,6 +283,7 @@ export default function Reports() {
                 <Th>平均响应</Th>
                 <Th>平均处理</Th>
                 <Th>SLA达标率</Th>
+                <Th isNumeric>平均评价</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -282,10 +311,110 @@ export default function Reports() {
                       {row.slaRate}
                     </Text>
                   </Td>
+                  <Td isNumeric>
+                    {(() => {
+                      const s = evalByName.get(row.name)
+                      if (!s || s.count === 0) return <Text color="gray.400">-</Text>
+                      return (
+                        <HStack spacing={1} justify="flex-end">
+                          <Icon as={Star} color="#F5B041" fill="#F5B041" boxSize={3} />
+                          <Text as="span" fontWeight="600" color="#F5B041">{s.averageRating.toFixed(1)}</Text>
+                          <Text as="span" fontSize="xs" color="gray.400">({s.count})</Text>
+                        </HStack>
+                      )
+                    })()}
+                  </Td>
                 </Tr>
               ))}
             </Tbody>
           </Table>
+        </CardBody>
+      </Card>
+
+      <Card borderRadius="16px">
+        <CardBody>
+          <HStack mb={4}>
+            <Icon as={Star} color="#F5B041" fill="#F5B041" boxSize={5} />
+            <Heading size="sm">处理人评价统计</Heading>
+          </HStack>
+
+          {totalEvaluations === 0 ? (
+            <Text textAlign="center" py={10} color="gray.400" fontSize="sm">
+              暂无评价数据，工单关闭后提交人可对处理人进行评价
+            </Text>
+          ) : (
+            <VStack align="stretch" spacing={5}>
+              <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={4}>
+                <Box bg="gray.50" p={4} borderRadius="12px">
+                  <Text fontSize="xs" color="gray.500">总评价数</Text>
+                  <Text fontSize="2xl" fontWeight="700" color="#2D3748" mt={1}>{totalEvaluations}</Text>
+                </Box>
+                <Box bg="gray.50" p={4} borderRadius="12px">
+                  <Text fontSize="xs" color="gray.500">平均满意度</Text>
+                  <HStack spacing={1} mt={1} align="baseline">
+                    <Text fontSize="2xl" fontWeight="700" color="#F5B041">{overallAvgRating.toFixed(1)}</Text>
+                    <Text fontSize="sm" color="gray.400">/ {MAX_RATING}</Text>
+                  </HStack>
+                </Box>
+                <Box bg="gray.50" p={4} borderRadius="12px">
+                  <Text fontSize="xs" color="gray.500">参评处理人</Text>
+                  <Text fontSize="2xl" fontWeight="700" color="#2D3748" mt={1}>{ratingBreakdown.length}</Text>
+                </Box>
+              </SimpleGrid>
+
+              <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={5}>
+                <Box h={300}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={ratingChartData} layout="vertical" margin={{ left: 10, right: 40 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#EDF2F7" horizontal={false} />
+                      <XAxis type="number" domain={[0, MAX_RATING]} ticks={[0, 1, 2, 3, 4, 5]} tick={{ fontSize: 12 }} stroke="#A0AEC0" />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} stroke="#A0AEC0" width={60} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        formatter={(value: number) => [`${value} 星`, '平均评分']}
+                      />
+                      <Bar dataKey="评分" fill="#F5B041" radius={[0, 6, 6, 0]} barSize={22}>
+                        <LabelList dataKey="评分" position="right" style={{ fontSize: 12, fill: '#4A5568' }} />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Box>
+
+                <VStack align="stretch" spacing={3}>
+                  {ratingBreakdown.map(d => (
+                    <Box key={d.name} p={3} bg="gray.50" borderRadius="10px">
+                      <HStack justify="space-between" mb={2}>
+                        <Text fontSize="sm" fontWeight="600" color="#2D3748">{d.name}</Text>
+                        <HStack spacing={1}>
+                          <Icon as={Star} color="#F5B041" fill="#F5B041" boxSize={3} />
+                          <Text as="span" fontSize="sm" fontWeight="600" color="#F5B041">{d.averageRating.toFixed(1)}</Text>
+                          <Text as="span" fontSize="xs" color="gray.400">({d.count} 条)</Text>
+                        </HStack>
+                      </HStack>
+                      <Progress
+                        value={(d.averageRating / MAX_RATING) * 100}
+                        colorScheme="yellow"
+                        size="sm"
+                        borderRadius="6px"
+                      />
+                      <HStack spacing={3} mt={2} flexWrap="wrap">
+                        {Array.from({ length: MAX_RATING }, (_, i) => {
+                          const star = MAX_RATING - i
+                          const cnt = d.distribution[star] || 0
+                          return (
+                            <HStack key={star} spacing={1} fontSize="xs" color="gray.500">
+                              <Text>{star}星</Text>
+                              <Text color="gray.400">{cnt}</Text>
+                            </HStack>
+                          )
+                        })}
+                      </HStack>
+                    </Box>
+                  ))}
+                </VStack>
+              </SimpleGrid>
+            </VStack>
+          )}
         </CardBody>
       </Card>
     </Box>

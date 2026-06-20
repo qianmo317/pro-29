@@ -31,11 +31,11 @@ import {
   Checkbox,
   Input,
 } from '@chakra-ui/react'
-import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff, Merge, ExternalLink, Pencil } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff, Merge, ExternalLink, Pencil, Star } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import Timeline from '@/components/Timeline/Timeline'
-import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS } from '@/types'
+import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS, MAX_RATING, RATING_LABELS } from '@/types'
 import { type TicketStatus, type TicketCategory, type TicketPriority } from '@/types'
 import { FormControl, FormLabel, FormErrorMessage } from '@chakra-ui/react'
 
@@ -79,6 +79,10 @@ export default function TicketDetail() {
   const [editPriority, setEditPriority] = useState<TicketPriority>('medium')
   const [editSubmitted, setEditSubmitted] = useState(false)
 
+  const [evalRating, setEvalRating] = useState(0)
+  const [evalComment, setEvalComment] = useState('')
+  const [evalSubmitted, setEvalSubmitted] = useState(false)
+
   const ticket = ticketStore.getTicketById(id || '')
   const records = ticketStore.getRecordsByTicketId(id || '')
   const mergedTickets = useMemo(
@@ -94,6 +98,7 @@ export default function TicketDetail() {
     [ticket, ticketStore]
   )
   const following = ticket && currentUser ? isFollowing(ticket.id, currentUser.id) : false
+  const evaluation = ticket ? ticketStore.getEvaluationByTicketId(ticket.id) : undefined
 
   const handleOpenEdit = () => {
     if (!ticket) return
@@ -202,6 +207,42 @@ export default function TicketDetail() {
     setComment('')
     toast({ title: '备注已添加', status: 'success', duration: 2000 })
   }
+
+  const handleEvalSubmit = () => {
+    if (!ticket || !currentUser) return
+    setEvalSubmitted(true)
+    if (evalRating < 1) {
+      toast({ title: '请选择评分', status: 'warning', duration: 2000 })
+      return
+    }
+    ticketStore.addEvaluation(ticket.id, evalRating, evalComment, currentUser.id)
+    toast({ title: '评价已提交', status: 'success', duration: 2000 })
+    setEvalRating(0)
+    setEvalComment('')
+    setEvalSubmitted(false)
+  }
+
+  const renderStars = (rating: number, interactive: boolean = false) => (
+    <HStack spacing={1}>
+      {Array.from({ length: MAX_RATING }, (_, i) => {
+        const starValue = i + 1
+        const filled = starValue <= rating
+        return (
+          <Icon
+            key={i}
+            as={Star}
+            boxSize={interactive ? 7 : 5}
+            color={filled ? '#F5B041' : 'gray.300'}
+            fill={filled ? '#F5B041' : 'none'}
+            cursor={interactive ? 'pointer' : 'default'}
+            onClick={interactive ? () => setEvalRating(starValue) : undefined}
+            _hover={interactive ? { transform: 'scale(1.15)' } : undefined}
+            transition="all 0.15s ease"
+          />
+        )
+      })}
+    </HStack>
+  )
 
   const toggleMergeSelect = (tid: string) => {
     setSelectedMergeIds(prev =>
@@ -607,6 +648,71 @@ export default function TicketDetail() {
           <Timeline records={records} users={users} />
         </CardBody>
       </Card>
+
+      {ticket.status === 'closed' && !isMerged && (
+        <Card borderRadius="16px">
+          <CardBody p={6}>
+            <HStack mb={4} spacing={2}>
+              <Icon as={Star} color="#F5B041" boxSize={5} fill="#F5B041" />
+              <Text fontSize="sm" fontWeight="600" color="#2D3748">工单评价</Text>
+            </HStack>
+            {evaluation ? (
+              <VStack align="stretch" spacing={3}>
+                <HStack spacing={3}>
+                  {renderStars(evaluation.rating)}
+                  <Text fontSize="sm" color="#F5B041" fontWeight="600">
+                    {evaluation.rating} 星
+                  </Text>
+                  <Badge colorScheme="yellow" fontSize="xs">{RATING_LABELS[evaluation.rating]}</Badge>
+                </HStack>
+                {evaluation.comment && (
+                  <Box p={4} bg="gray.50" borderRadius="8px">
+                    <Text fontSize="sm" color="#4A5568" lineHeight="1.8" whiteSpace="pre-wrap">
+                      {evaluation.comment}
+                    </Text>
+                  </Box>
+                )}
+                <HStack spacing={2} fontSize="xs" color="gray.400">
+                  <Text>评价人：{getUserName(evaluation.evaluatorId)}</Text>
+                  <Text>·</Text>
+                  <Text>{formatDateTime(evaluation.createdAt)}</Text>
+                </HStack>
+              </VStack>
+            ) : currentUser.id === ticket.creatorId && ticket.assigneeId ? (
+              <VStack align="stretch" spacing={4}>
+                <Box>
+                  <Text fontSize="sm" color="gray.600" mb={2}>请对本次处理进行评分</Text>
+                  <HStack spacing={3}>
+                    {renderStars(evalRating, true)}
+                    {evalRating > 0 && (
+                      <Text fontSize="sm" color="#F5B041" fontWeight="600">
+                        {RATING_LABELS[evalRating]}
+                      </Text>
+                    )}
+                  </HStack>
+                  {evalSubmitted && evalRating < 1 && (
+                    <Text fontSize="xs" color="red.500" mt={1}>请选择评分</Text>
+                  )}
+                </Box>
+                <Textarea
+                  value={evalComment}
+                  onChange={e => setEvalComment(e.target.value)}
+                  placeholder="写下您对本次处理的评价（选填）..."
+                  borderRadius="8px"
+                  rows={3}
+                />
+                <Button colorScheme="yellow" onClick={handleEvalSubmit} leftIcon={<Icon as={Star} />} w="full">
+                  提交评价
+                </Button>
+              </VStack>
+            ) : (
+              <Text fontSize="sm" color="gray.400" textAlign="center" py={4}>
+                提交人尚未评价
+              </Text>
+            )}
+          </CardBody>
+        </Card>
+      )}
 
       <Modal isOpen={isOpen} onClose={onClose} size="xl">
         <ModalOverlay />

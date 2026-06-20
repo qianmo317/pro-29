@@ -38,6 +38,26 @@ export interface TicketRecord {
   createdAt: string
 }
 
+export interface TicketEvaluation {
+  id: string
+  ticketId: string
+  rating: number
+  comment: string
+  evaluatorId: string
+  assigneeId: string
+  createdAt: string
+}
+
+export const MAX_RATING = 5
+
+export const RATING_LABELS: Record<number, string> = {
+  1: '非常不满意',
+  2: '不满意',
+  3: '一般',
+  4: '满意',
+  5: '非常满意',
+}
+
 export interface KnowledgeArticle {
   id: string
   title: string

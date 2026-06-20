@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   Ticket,
   TicketRecord,
+  TicketEvaluation,
   TicketStatus,
   TicketPriority,
   TicketCategory,
@@ -10,7 +11,7 @@ import type {
   ImportResultItem,
 } from '@/types'
 import { CATEGORY_LABELS, PRIORITY_LABELS } from '@/types'
-import { MOCK_TICKETS, MOCK_RECORDS } from '@/utils/mockData'
+import { MOCK_TICKETS, MOCK_RECORDS, MOCK_EVALUATIONS } from '@/utils/mockData'
 import { getSLADeadline } from '@/utils/slaUtils'
 import { saveToStorage, loadFromStorage } from '@/utils/storage'
 import { useNotificationStore } from './notificationStore'
@@ -25,6 +26,7 @@ interface EditableTicketFields {
 interface TicketState {
   tickets: Ticket[]
   records: TicketRecord[]
+  evaluations: TicketEvaluation[]
   nextId: number
   initialize: () => void
   addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds'>) => Ticket
@@ -36,6 +38,9 @@ interface TicketState {
   getTicketById: (id: string) => Ticket | undefined
   getRecordsByTicketId: (id: string) => TicketRecord[]
   getFilteredTickets: (filters: TicketFilters) => Ticket[]
+  addEvaluation: (ticketId: string, rating: number, comment: string, evaluatorId: string) => void
+  getEvaluationByTicketId: (ticketId: string) => TicketEvaluation | undefined
+  getEvaluationStats: () => Array<{ agentId: string; averageRating: number; count: number; distribution: Record<number, number> }>
   getStats: () => {
     totalCount: number
     pendingCount: number
@@ -67,16 +72,19 @@ export interface TicketFilters {
 
 const STORAGE_KEY_TICKETS = 'tickets'
 const STORAGE_KEY_RECORDS = 'records'
+const STORAGE_KEY_EVALUATIONS = 'evaluations'
 const STORAGE_KEY_NEXT_ID = 'next_id'
 
 export const useTicketStore = create<TicketState>((set, get) => ({
   tickets: MOCK_TICKETS,
   records: MOCK_RECORDS,
+  evaluations: MOCK_EVALUATIONS,
   nextId: 13,
 
   initialize: () => {
     const savedTickets = loadFromStorage<Ticket[]>(STORAGE_KEY_TICKETS)
     const savedRecords = loadFromStorage<TicketRecord[]>(STORAGE_KEY_RECORDS)
+    const savedEvaluations = loadFromStorage<TicketEvaluation[]>(STORAGE_KEY_EVALUATIONS)
     const savedNextId = loadFromStorage<number>(STORAGE_KEY_NEXT_ID)
     if (savedTickets) {
       const normalizedTickets = savedTickets.map(t => ({
@@ -87,6 +95,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       set({ tickets: normalizedTickets })
     }
     if (savedRecords) set({ records: savedRecords })
+    if (savedEvaluations) set({ evaluations: savedEvaluations })
     if (savedNextId) set({ nextId: savedNextId })
   },
 
@@ -274,6 +283,64 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       }
       return true
     })
+  },
+
+  addEvaluation: (ticketId, rating, comment, evaluatorId) => {
+    const ticket = get().getTicketById(ticketId)
+    if (!ticket || get().getEvaluationByTicketId(ticketId)) return
+    const assigneeId = ticket.assigneeId
+    if (!assigneeId) return
+
+    const now = new Date().toISOString()
+    const evaluation: TicketEvaluation = {
+      id: `ev_${Date.now()}`,
+      ticketId,
+      rating,
+      comment: comment.trim(),
+      evaluatorId,
+      assigneeId,
+      createdAt: now,
+    }
+    const record: TicketRecord = {
+      id: `r_${Date.now()}`,
+      ticketId,
+      operatorId: evaluatorId,
+      action: 'evaluated',
+      content: `提交评价：${rating} 星${comment.trim() ? `，${comment.trim()}` : ''}`,
+      createdAt: now,
+    }
+    set((state) => {
+      const evaluations = [evaluation, ...state.evaluations]
+      const records = [record, ...state.records]
+      saveToStorage(STORAGE_KEY_EVALUATIONS, evaluations)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { evaluations, records }
+    })
+    useNotificationStore.getState().createNotificationsForFollowers(ticketId, record, evaluatorId)
+  },
+
+  getEvaluationByTicketId: (ticketId) => {
+    return get().evaluations.find(e => e.ticketId === ticketId)
+  },
+
+  getEvaluationStats: () => {
+    const { evaluations } = get()
+    const statsMap: Record<string, { totalRating: number; count: number; distribution: Record<number, number> }> = {}
+    evaluations.forEach(e => {
+      if (!statsMap[e.assigneeId]) {
+        statsMap[e.assigneeId] = { totalRating: 0, count: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }
+      }
+      const s = statsMap[e.assigneeId]
+      s.totalRating += e.rating
+      s.count += 1
+      s.distribution[e.rating] = (s.distribution[e.rating] || 0) + 1
+    })
+    return Object.entries(statsMap).map(([agentId, s]) => ({
+      agentId,
+      averageRating: s.count > 0 ? s.totalRating / s.count : 0,
+      count: s.count,
+      distribution: s.distribution,
+    }))
   },
 
   getStats: () => {

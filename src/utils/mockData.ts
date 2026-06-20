@@ -1,4 +1,4 @@
-import type { User, Ticket, TicketRecord, KnowledgeArticle, SLAConfig, TicketTemplate } from '@/types'
+import type { User, Ticket, TicketRecord, TicketEvaluation, KnowledgeArticle, SLAConfig, TicketTemplate } from '@/types'
 
 export const MOCK_USERS: User[] = [
   { id: 'u1', name: '张管理', role: 'admin', avatar: '', email: 'admin@company.com', password: 'admin123' },
@@ -115,6 +115,19 @@ export const MOCK_RECORDS: TicketRecord[] = [
   { id: 'r24', ticketId: 'TK-010', operatorId: 'u6', action: 'created', content: '创建工单', createdAt: h(1) },
   { id: 'r25', ticketId: 'TK-011', operatorId: 'u5', action: 'created', content: '创建工单', createdAt: h(120) },
   { id: 'r26', ticketId: 'TK-011', operatorId: 'u4', action: 'comment', content: '修复方案被驳回，需要重新设计方案', createdAt: h(48) },
+  { id: 'r27', ticketId: 'TK-006', operatorId: 'u6', action: 'evaluated', content: '提交评价：5 星，处理很及时，驱动安装后打印恢复正常', createdAt: h(20) },
+  { id: 'r28', ticketId: 'TK-012', operatorId: 'u6', action: 'evaluated', content: '提交评价：3 星，布线完成但整体耗时偏长', createdAt: h(70) },
+]
+
+export const MOCK_EVALUATIONS: TicketEvaluation[] = [
+  {
+    id: 'ev1', ticketId: 'TK-006', rating: 5, comment: '处理很及时，驱动安装后打印恢复正常，态度也很好。',
+    evaluatorId: 'u6', assigneeId: 'u3', createdAt: h(20),
+  },
+  {
+    id: 'ev2', ticketId: 'TK-012', rating: 3, comment: '布线最终完成了，但整体耗时偏长，希望后续能提高效率。',
+    evaluatorId: 'u6', assigneeId: 'u2', createdAt: h(70),
+  },
 ]
 
 const k1Content = [
