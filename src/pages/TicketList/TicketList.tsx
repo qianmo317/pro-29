@@ -125,6 +125,10 @@ export default function TicketList() {
 
   const handleConfirmMerge = () => {
     if (!mainTicketId || !currentUser) return
+    if (isTicketMerged(mainTicketId)) {
+      toast({ title: '主工单已被合并，无法作为主工单', status: 'error', duration: 3000 })
+      return
+    }
     const mergedIds = selectedIds.filter(id => id !== mainTicketId)
     if (mergedIds.length === 0) {
       toast({ title: '请选择要合并的工单', status: 'warning', duration: 2000 })
@@ -280,9 +284,9 @@ export default function TicketList() {
                           {ticket.mergedToId && (
                             <Badge ml={2} colorScheme="gray" fontSize="xs">已合并</Badge>
                           )}
-                          {ticket.mergedTicketIds.length > 0 && (
+                          {(ticket.mergedTicketIds ?? []).length > 0 && (
                             <Badge ml={2} colorScheme="purple" fontSize="xs">
-                              含{ticket.mergedTicketIds.length}个合并
+                              含{(ticket.mergedTicketIds ?? []).length}个合并
                             </Badge>
                           )}
                         </Td>

@@ -93,7 +93,7 @@ export default function TicketDetail() {
     return ticketStore.tickets.filter(t => {
       if (t.id === ticket.id) return false
       if (t.status === 'merged') return false
-      if (t.mergedTicketIds.length > 0) return false
+      if ((t.mergedTicketIds ?? []).length > 0) return false
       if (s && !t.title.toLowerCase().includes(s) && !t.id.toLowerCase().includes(s)) return false
       return true
     }).slice(0, 20)
@@ -165,6 +165,10 @@ export default function TicketDetail() {
 
   const handleConfirmMerge = () => {
     if (!ticket || selectedMergeIds.length === 0 || !currentUser) return
+    if (ticketStore.isTicketMerged(ticket.id)) {
+      toast({ title: '当前工单已被合并，无法作为主工单', status: 'error', duration: 3000 })
+      return
+    }
     ticketStore.mergeTickets(ticket.id, selectedMergeIds, currentUser.id)
     toast({ title: `已将 ${selectedMergeIds.length} 个工单合并到当前工单`, status: 'success', duration: 3000 })
     setSelectedMergeIds([])

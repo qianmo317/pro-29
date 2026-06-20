@@ -69,7 +69,14 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     const savedTickets = loadFromStorage<Ticket[]>(STORAGE_KEY_TICKETS)
     const savedRecords = loadFromStorage<TicketRecord[]>(STORAGE_KEY_RECORDS)
     const savedNextId = loadFromStorage<number>(STORAGE_KEY_NEXT_ID)
-    if (savedTickets) set({ tickets: savedTickets })
+    if (savedTickets) {
+      const normalizedTickets = savedTickets.map(t => ({
+        ...t,
+        mergedToId: t.mergedToId ?? null,
+        mergedTicketIds: t.mergedTicketIds ?? [],
+      }))
+      set({ tickets: normalizedTickets })
+    }
     if (savedRecords) set({ records: savedRecords })
     if (savedNextId) set({ nextId: savedNextId })
   },
@@ -144,6 +151,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
 
   changeStatus: (id, status, operatorId, content) => {
     if (get().isTicketMerged(id)) return
+    if (status === 'merged') return
     const now = new Date().toISOString()
     const record: TicketRecord = {
       id: `r_${Date.now()}`,
@@ -195,8 +203,8 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   getRecordsByTicketId: (id) => {
     const ticket = get().getTicketById(id)
     let ticketIds = [id]
-    if (ticket && ticket.mergedTicketIds.length > 0) {
-      ticketIds = [...ticketIds, ...ticket.mergedTicketIds]
+    if (ticket && (ticket.mergedTicketIds ?? []).length > 0) {
+      ticketIds = [...ticketIds, ...(ticket.mergedTicketIds ?? [])]
     }
     return get().records.filter(r => ticketIds.includes(r.ticketId)).sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -358,15 +366,16 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     const now = new Date().toISOString()
     const mainTicket = get().getTicketById(mainTicketId)
     if (!mainTicket) return
+    if (get().isTicketMerged(mainTicketId)) return
 
     const validMergedIds = mergedTicketIds.filter(id => {
       const t = get().getTicketById(id)
-      return t && t.id !== mainTicketId && t.status !== 'merged' && !t.mergedTicketIds?.length
+      return t && t.id !== mainTicketId && t.status !== 'merged' && !(t.mergedTicketIds ?? []).length
     })
 
     if (validMergedIds.length === 0) return
 
-    const allMergedIds = [...new Set([...mainTicket.mergedTicketIds, ...validMergedIds])]
+    const allMergedIds = [...new Set([...(mainTicket.mergedTicketIds ?? []), ...validMergedIds])]
 
     const newRecords: TicketRecord[] = []
 
@@ -425,8 +434,8 @@ export const useTicketStore = create<TicketState>((set, get) => ({
 
   getMergedTickets: (ticketId) => {
     const ticket = get().getTicketById(ticketId)
-    if (!ticket || ticket.mergedTicketIds.length === 0) return []
-    return ticket.mergedTicketIds
+    if (!ticket || (ticket.mergedTicketIds ?? []).length === 0) return []
+    return (ticket.mergedTicketIds ?? [])
       .map(id => get().getTicketById(id))
       .filter((t): t is Ticket => t !== undefined)
   },
