@@ -144,3 +144,19 @@ export interface TicketTemplate {
   updatedAt: string
   creatorId: string
 }
+
+export interface TicketFollower {
+  id: string
+  ticketId: string
+  userId: string
+  createdAt: string
+}
+
+export interface Notification {
+  id: string
+  userId: string
+  ticketId: string
+  recordId: string
+  isRead: boolean
+  createdAt: string
+}

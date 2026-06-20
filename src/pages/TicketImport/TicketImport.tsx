@@ -507,7 +507,7 @@ function StatCard({
   label: string
   value: number
   color: string
-  icon: React.ComponentType<{ size?: number; color?: string }>
+  icon: React.ComponentType<{ size?: number | string; color?: string }>
 }) {
   const colorMap: Record<string, { bg: string; text: string }> = {
     gray: { bg: 'gray.50', text: 'gray.600' },

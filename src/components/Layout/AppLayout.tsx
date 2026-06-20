@@ -18,9 +18,11 @@ import {
   Tag,
 } from '@chakra-ui/react'
 import { ChevronRightIcon } from '@chakra-ui/icons'
-import { LogOut, User, Shield, UserCog } from 'lucide-react'
+import { LogOut, User, Shield, UserCog, Bell } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { useUserStore } from '@/store/userStore'
+import { useNotificationStore } from '@/store/notificationStore'
+import NotificationPanel from '@/components/NotificationPanel/NotificationPanel'
 
 const ROUTE_LABELS: Record<string, string> = {
   '/dashboard': '仪表盘',
@@ -48,8 +50,10 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const currentUser = useUserStore((s) => s.currentUser)
   const logout = useUserStore((s) => s.logout)
+  const getUnreadCountByUserId = useNotificationStore((s) => s.getUnreadCountByUserId)
 
   const currentLabel = getRouteLabel(location.pathname)
+  const unreadCount = currentUser ? getUnreadCountByUserId(currentUser.id) : 0
 
   const handleLogout = () => {
     logout()
@@ -89,7 +93,48 @@ export default function AppLayout() {
             </BreadcrumbItem>
           </Breadcrumb>
 
-          <Menu placement="bottom-end">
+          <HStack spacing={2}>
+            <Menu placement="bottom-end">
+              <MenuButton
+                as={IconButton}
+                variant="ghost"
+                borderRadius="12px"
+                position="relative"
+                aria-label="消息通知"
+                _hover={{ bg: 'gray.100' }}
+              >
+                <Box position="relative">
+                  <Bell size={20} color="#4A5568" />
+                  {unreadCount > 0 && (
+                    <Box
+                      position="absolute"
+                      top="-6px"
+                      right="-8px"
+                      minW="16px"
+                      h="16px"
+                      borderRadius="full"
+                      bg="#E53E3E"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      px="4px"
+                    >
+                      <Text
+                        fontSize="10px"
+                        fontWeight="700"
+                        color="white"
+                        lineHeight={1}
+                      >
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Text>
+                    </Box>
+                  )}
+                </Box>
+              </MenuButton>
+              <NotificationPanel />
+            </Menu>
+
+            <Menu placement="bottom-end">
             <MenuButton
               as={IconButton}
               variant="ghost"
@@ -157,6 +202,7 @@ export default function AppLayout() {
               </MenuItem>
             </MenuList>
           </Menu>
+          </HStack>
         </Box>
 
         <Box flex={1} overflow="auto" p={6} bg="#F7F8FC">

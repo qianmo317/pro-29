@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
+import { useNotificationStore } from '@/store/notificationStore'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Box,
@@ -21,7 +22,7 @@ import {
   Icon,
   Avatar,
 } from '@chakra-ui/react'
-import { ArrowLeft, User, Clock, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw } from 'lucide-react'
+import { ArrowLeft, User, Clock, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import Timeline from '@/components/Timeline/Timeline'
@@ -53,14 +54,27 @@ export default function TicketDetail() {
   const toast = useToast()
   const { getTicketById, getRecordsByTicketId, assignTicket, changeStatus, addRecord } = useTicketStore()
   const { users, currentUser } = useUserStore()
+  const { isFollowing, followTicket, unfollowTicket } = useNotificationStore()
 
   const [assigneeId, setAssigneeId] = useState('')
   const [comment, setComment] = useState('')
 
   const ticket = getTicketById(id || '')
   const records = getRecordsByTicketId(id || '')
+  const following = ticket && currentUser ? isFollowing(ticket.id, currentUser.id) : false
 
   if (!currentUser) return null
+
+  const handleToggleFollow = () => {
+    if (!ticket || !currentUser) return
+    if (following) {
+      unfollowTicket(ticket.id, currentUser.id)
+      toast({ title: '已取消关注', status: 'info', duration: 2000 })
+    } else {
+      followTicket(ticket.id, currentUser.id)
+      toast({ title: '已关注该工单，状态变更时会收到通知', status: 'success', duration: 2000 })
+    }
+  }
 
   if (!ticket) {
     return (
@@ -221,6 +235,16 @@ export default function TicketDetail() {
         </Button>
         <Text fontSize="sm" color="gray.500" fontWeight="500">{ticket.id}</Text>
         <Heading size="md" flex={1} isTruncated>{ticket.title}</Heading>
+        <Button
+          variant={following ? 'solid' : 'outline'}
+          colorScheme={following ? 'blue' : 'gray'}
+          size="sm"
+          leftIcon={<Icon as={following ? BellOff : Bell} />}
+          onClick={handleToggleFollow}
+          borderRadius="8px"
+        >
+          {following ? '取消关注' : '关注工单'}
+        </Button>
         <StatusBadge status={ticket.status} size="md" />
       </Flex>
 

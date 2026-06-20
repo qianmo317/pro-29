@@ -12,6 +12,7 @@ import type {
 import { MOCK_TICKETS, MOCK_RECORDS } from '@/utils/mockData'
 import { getSLADeadline } from '@/utils/slaUtils'
 import { saveToStorage, loadFromStorage } from '@/utils/storage'
+import { useNotificationStore } from './notificationStore'
 
 interface TicketState {
   tickets: Ticket[]
@@ -112,57 +113,59 @@ export const useTicketStore = create<TicketState>((set, get) => ({
 
   assignTicket: (id, assigneeId, operatorId) => {
     const now = new Date().toISOString()
+    const record: TicketRecord = {
+      id: `r_${Date.now()}`,
+      ticketId: id,
+      operatorId,
+      action: 'assigned',
+      content: `分配处理人`,
+      createdAt: now,
+    }
     set((state) => {
       const tickets = state.tickets.map(t =>
         t.id === id ? { ...t, assigneeId, status: 'assigned' as TicketStatus, updatedAt: now } : t
       )
-      const record: TicketRecord = {
-        id: `r_${Date.now()}`,
-        ticketId: id,
-        operatorId,
-        action: 'assigned',
-        content: `分配处理人`,
-        createdAt: now,
-      }
       const records = [record, ...state.records]
       saveToStorage(STORAGE_KEY_TICKETS, tickets)
       saveToStorage(STORAGE_KEY_RECORDS, records)
       return { tickets, records }
     })
+    useNotificationStore.getState().createNotificationsForFollowers(id, record, operatorId)
   },
 
   changeStatus: (id, status, operatorId, content) => {
     const now = new Date().toISOString()
+    const record: TicketRecord = {
+      id: `r_${Date.now()}`,
+      ticketId: id,
+      operatorId,
+      action: 'status_changed',
+      content,
+      createdAt: now,
+    }
     set((state) => {
       const tickets = state.tickets.map(t =>
         t.id === id ? { ...t, status, updatedAt: now } : t
       )
-      const record: TicketRecord = {
-        id: `r_${Date.now()}`,
-        ticketId: id,
-        operatorId,
-        action: 'status_changed',
-        content,
-        createdAt: now,
-      }
       const records = [record, ...state.records]
       saveToStorage(STORAGE_KEY_TICKETS, tickets)
       saveToStorage(STORAGE_KEY_RECORDS, records)
       return { tickets, records }
     })
+    useNotificationStore.getState().createNotificationsForFollowers(id, record, operatorId)
   },
 
   addRecord: (ticketId, operatorId, action, content) => {
     const now = new Date().toISOString()
+    const record: TicketRecord = {
+      id: `r_${Date.now()}`,
+      ticketId,
+      operatorId,
+      action,
+      content,
+      createdAt: now,
+    }
     set((state) => {
-      const record: TicketRecord = {
-        id: `r_${Date.now()}`,
-        ticketId,
-        operatorId,
-        action,
-        content,
-        createdAt: now,
-      }
       const records = [record, ...state.records]
       const tickets = state.tickets.map(t =>
         t.id === ticketId ? { ...t, updatedAt: now } : t
@@ -171,6 +174,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       saveToStorage(STORAGE_KEY_TICKETS, tickets)
       return { records, tickets }
     })
+    useNotificationStore.getState().createNotificationsForFollowers(ticketId, record, operatorId)
   },
 
   getTicketById: (id) => {

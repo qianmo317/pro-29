@@ -15,17 +15,20 @@ import Reports from '@/pages/Reports/Reports'
 import { useUserStore } from '@/store/userStore'
 import { useTicketStore } from '@/store/ticketStore'
 import { useTemplateStore } from '@/store/templateStore'
+import { useNotificationStore } from '@/store/notificationStore'
 
 export default function App() {
   const initAuth = useUserStore((s) => s.initAuth)
   const initTickets = useTicketStore((s) => s.initialize)
   const initTemplates = useTemplateStore((s) => s.initialize)
+  const initNotifications = useNotificationStore((s) => s.initialize)
 
   useEffect(() => {
     initAuth()
     initTickets()
     initTemplates()
-  }, [initAuth, initTickets, initTemplates])
+    initNotifications()
+  }, [initAuth, initTickets, initTemplates, initNotifications])
 
   return (
     <Router>
