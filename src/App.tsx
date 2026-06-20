@@ -8,6 +8,7 @@ import TicketList from '@/pages/TicketList/TicketList'
 import TicketDetail from '@/pages/TicketDetail/TicketDetail'
 import TicketCreate from '@/pages/TicketCreate/TicketCreate'
 import TicketImport from '@/pages/TicketImport/TicketImport'
+import ScheduledTickets from '@/pages/ScheduledTickets/ScheduledTickets'
 import TemplateManage from '@/pages/TemplateManage/TemplateManage'
 import KnowledgeList from '@/pages/Knowledge/KnowledgeList'
 import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail'
@@ -16,19 +17,28 @@ import { useUserStore } from '@/store/userStore'
 import { useTicketStore } from '@/store/ticketStore'
 import { useTemplateStore } from '@/store/templateStore'
 import { useNotificationStore } from '@/store/notificationStore'
+import { useScheduledTicketStore } from '@/store/scheduledTicketStore'
 
 export default function App() {
   const initAuth = useUserStore((s) => s.initAuth)
   const initTickets = useTicketStore((s) => s.initialize)
   const initTemplates = useTemplateStore((s) => s.initialize)
   const initNotifications = useNotificationStore((s) => s.initialize)
+  const initScheduled = useScheduledTicketStore((s) => s.initialize)
+  const processDueTickets = useScheduledTicketStore((s) => s.processDueTickets)
 
   useEffect(() => {
     initAuth()
     initTickets()
     initTemplates()
     initNotifications()
-  }, [initAuth, initTickets, initTemplates, initNotifications])
+    initScheduled()
+    processDueTickets()
+    const interval = setInterval(() => {
+      processDueTickets()
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [initAuth, initTickets, initTemplates, initNotifications, initScheduled, processDueTickets])
 
   return (
     <Router>
@@ -48,6 +58,7 @@ export default function App() {
           <Route path="tickets/create" element={<TicketCreate />} />
           <Route path="tickets/import" element={<TicketImport />} />
           <Route path="tickets/:id" element={<TicketDetail />} />
+          <Route path="scheduled-tickets" element={<ScheduledTickets />} />
           <Route path="templates" element={<TemplateManage />} />
           <Route path="knowledge" element={<KnowledgeList />} />
           <Route path="knowledge/:id" element={<KnowledgeDetail />} />

@@ -17,6 +17,8 @@ import {
   FormLabel,
   FormErrorMessage,
   Badge,
+  RadioGroup,
+  Radio,
   useToast,
   Popover,
   PopoverTrigger,
@@ -26,8 +28,9 @@ import {
   PopoverArrow,
   Stack,
 } from '@chakra-ui/react'
-import { ArrowLeft, Send, BookOpen, FileText, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Send, BookOpen, FileText, ChevronDown, CalendarClock } from 'lucide-react'
 import { useTicketStore } from '@/store/ticketStore'
+import { useScheduledTicketStore } from '@/store/scheduledTicketStore'
 import { useUserStore } from '@/store/userStore'
 import { useKnowledgeStore } from '@/store/knowledgeStore'
 import { useTemplateStore } from '@/store/templateStore'
@@ -38,6 +41,7 @@ export default function TicketCreate() {
   const navigate = useNavigate()
   const toast = useToast()
   const addTicket = useTicketStore((s) => s.addTicket)
+  const addScheduledTicket = useScheduledTicketStore((s) => s.addScheduledTicket)
   const users = useUserStore((s) => s.users)
   const currentUser = useUserStore((s) => s.currentUser)
   const searchArticles = useKnowledgeStore((s) => s.searchArticles)
@@ -50,6 +54,8 @@ export default function TicketCreate() {
   const [assigneeId, setAssigneeId] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<TicketTemplate | null>(null)
+  const [createMode, setCreateMode] = useState<'immediate' | 'scheduled'>('immediate')
+  const [scheduledTime, setScheduledTime] = useState('')
 
   const agents = useMemo(() => users.filter((u) => u.role === 'agent'), [users])
   const activeTemplates = useMemo(() => templates.filter((t) => t.isActive), [templates])
@@ -91,10 +97,54 @@ export default function TicketCreate() {
         ? '描述至少需要10个字符'
         : ''
     : ''
+  const scheduledTimeError = submitted && createMode === 'scheduled'
+    ? !scheduledTime.trim()
+      ? '请选择生效时间'
+      : new Date(scheduledTime).getTime() <= Date.now()
+        ? '生效时间必须晚于当前时间'
+        : ''
+    : ''
+
+  const datetimeLocalMin = new Date(
+    Date.now() - new Date().getTimezoneOffset() * 60000
+  ).toISOString().slice(0, 16)
+
+  const formatDateTime = (iso: string): string => {
+    const d = new Date(iso)
+    const yyyy = d.getFullYear()
+    const MM = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    const HH = String(d.getHours()).padStart(2, '0')
+    const mm = String(d.getMinutes()).padStart(2, '0')
+    return `${yyyy}-${MM}-${dd} ${HH}:${mm}`
+  }
 
   const handleSubmit = () => {
     setSubmitted(true)
-    if (titleError || descriptionError) return
+    if (titleError || descriptionError || scheduledTimeError) return
+
+    if (createMode === 'scheduled') {
+      const newScheduled = addScheduledTicket({
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        priority,
+        creatorId: currentUser.id,
+        assigneeId: assigneeId || null,
+        scheduledTime: new Date(scheduledTime).toISOString(),
+      })
+
+      toast({
+        title: '预约创建成功',
+        description: `预约工单 ${newScheduled.id} 将于 ${formatDateTime(newScheduled.scheduledTime)} 自动创建`,
+        status: 'success',
+        duration: 4000,
+        isClosable: true,
+      })
+
+      navigate('/scheduled-tickets')
+      return
+    }
 
     const newTicket = addTicket({
       title: title.trim(),
@@ -271,13 +321,42 @@ export default function TicketCreate() {
                 </Select>
               </FormControl>
 
+              <FormControl>
+                <FormLabel>创建方式</FormLabel>
+                <RadioGroup
+                  value={createMode}
+                  onChange={(value) => setCreateMode(value as 'immediate' | 'scheduled')}
+                >
+                  <HStack spacing={6}>
+                    <Radio value="immediate">立即创建</Radio>
+                    <Radio value="scheduled">预约创建</Radio>
+                  </HStack>
+                </RadioGroup>
+              </FormControl>
+
+              {createMode === 'scheduled' && (
+                <FormControl isInvalid={!!scheduledTimeError}>
+                  <FormLabel>生效时间</FormLabel>
+                  <Input
+                    type="datetime-local"
+                    value={scheduledTime}
+                    min={datetimeLocalMin}
+                    onChange={(e) => setScheduledTime(e.target.value)}
+                  />
+                  <Text fontSize="xs" color="gray.500" mt={1}>
+                    系统将在该时间点自动创建工单，预约期间可在「预约工单」中查看或取消
+                  </Text>
+                  {scheduledTimeError && <FormErrorMessage>{scheduledTimeError}</FormErrorMessage>}
+                </FormControl>
+              )}
+
               <HStack spacing={3} pt={2}>
                 <Button
                   colorScheme="brand"
-                  leftIcon={<Send size={16} />}
+                  leftIcon={createMode === 'scheduled' ? <CalendarClock size={16} /> : <Send size={16} />}
                   onClick={handleSubmit}
                 >
-                  提交工单
+                  {createMode === 'scheduled' ? '预约创建' : '提交工单'}
                 </Button>
                 <Button
                   variant="outline"

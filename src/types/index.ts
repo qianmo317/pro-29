@@ -164,3 +164,32 @@ export interface Notification {
   isRead: boolean
   createdAt: string
 }
+
+export type ScheduledTicketStatus = 'pending' | 'created' | 'cancelled'
+
+export interface ScheduledTicket {
+  id: string
+  title: string
+  description: string
+  category: TicketCategory
+  priority: TicketPriority
+  creatorId: string
+  assigneeId: string | null
+  scheduledTime: string
+  status: ScheduledTicketStatus
+  createdAt: string
+  createdTicketId: string | null
+  cancelledAt: string | null
+}
+
+export const SCHEDULED_STATUS_LABELS: Record<ScheduledTicketStatus, string> = {
+  pending: '等待生效',
+  created: '已生成',
+  cancelled: '已取消',
+}
+
+export const SCHEDULED_STATUS_COLORS: Record<ScheduledTicketStatus, string> = {
+  pending: '#FDCB6E',
+  created: '#00B894',
+  cancelled: '#718096',
+}
