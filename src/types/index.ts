@@ -96,3 +96,37 @@ export const STATUS_COLORS: Record<TicketStatus, string> = {
   closed: '#00B894',
   rejected: '#FF7675',
 }
+
+export interface ImportTicketRow {
+  title: string
+  description: string
+  category: TicketCategory
+  priority: TicketPriority
+  assigneeName?: string
+}
+
+export interface ImportResultItem {
+  rowIndex: number
+  success: boolean
+  ticket?: Ticket
+  error?: string
+  data: ImportTicketRow
+}
+
+export interface ImportResult {
+  total: number
+  success: number
+  failed: number
+  items: ImportResultItem[]
+}
+
+export const IMPORT_TEMPLATE_HEADERS = [
+  { key: 'title', label: '标题', required: true },
+  { key: 'description', label: '描述', required: true },
+  { key: 'category', label: '分类', required: true },
+  { key: 'priority', label: '优先级', required: true },
+  { key: 'assigneeName', label: '处理人', required: false },
+]
+
+export const CATEGORY_VALUES = ['network', 'hardware', 'software', 'security', 'access', 'other']
+export const PRIORITY_VALUES = ['critical', 'high', 'medium', 'low']

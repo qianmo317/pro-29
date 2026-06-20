@@ -24,7 +24,7 @@ import {
   Spacer,
   Flex,
 } from '@chakra-ui/react'
-import { Search, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Plus, ChevronLeft, ChevronRight, Upload } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import { PRIORITY_LABELS, PRIORITY_COLORS, CATEGORY_LABELS, STATUS_LABELS } from '@/types'
@@ -85,12 +85,21 @@ export default function TicketList() {
       <Flex align="center">
         <Heading size="lg">工单管理</Heading>
         <Spacer />
-        <Button
-          leftIcon={<Plus size={16} />}
-          onClick={() => navigate('/tickets/create')}
-        >
-          创建工单
-        </Button>
+        <HStack spacing={3}>
+          <Button
+            leftIcon={<Upload size={16} />}
+            variant="outline"
+            onClick={() => navigate('/tickets/import')}
+          >
+            批量导入
+          </Button>
+          <Button
+            leftIcon={<Plus size={16} />}
+            onClick={() => navigate('/tickets/create')}
+          >
+            创建工单
+          </Button>
+        </HStack>
       </Flex>
 
       <HStack spacing={4}>

@@ -1,5 +1,14 @@
 import { create } from 'zustand'
-import type { Ticket, TicketRecord, TicketStatus, TicketPriority, TicketCategory } from '@/types'
+import type {
+  Ticket,
+  TicketRecord,
+  TicketStatus,
+  TicketPriority,
+  TicketCategory,
+  ImportTicketRow,
+  ImportResult,
+  ImportResultItem,
+} from '@/types'
 import { MOCK_TICKETS, MOCK_RECORDS } from '@/utils/mockData'
 import { getSLADeadline } from '@/utils/slaUtils'
 import { saveToStorage, loadFromStorage } from '@/utils/storage'
@@ -27,6 +36,12 @@ interface TicketState {
     avgResolutionTime: string
     slaComplianceRate: string
   }
+  batchImportTickets: (
+    rows: ImportTicketRow[],
+    creatorId: string,
+    users: { id: string; name: string }[],
+    onProgress?: (current: number, total: number) => void,
+  ) => Promise<ImportResult>
 }
 
 export interface TicketFilters {
@@ -227,6 +242,95 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       thisMonthClosed,
       avgResolutionTime,
       slaComplianceRate,
+    }
+  },
+
+  batchImportTickets: async (rows, creatorId, users, onProgress) => {
+    const items: ImportResultItem[] = []
+    let successCount = 0
+    let failedCount = 0
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      try {
+        if (!row.title?.trim()) {
+          failedCount++
+          items.push({
+            rowIndex: i + 1,
+            success: false,
+            error: '标题不能为空',
+            data: row,
+          })
+          continue
+        }
+        if (!row.description?.trim() || row.description.trim().length < 10) {
+          failedCount++
+          items.push({
+            rowIndex: i + 1,
+            success: false,
+            error: '描述不能为空且至少10个字符',
+            data: row,
+          })
+          continue
+        }
+
+        let assigneeId: string | null = null
+        if (row.assigneeName?.trim()) {
+          const user = users.find(
+            (u) => u.name.trim() === row.assigneeName!.trim()
+          )
+          if (!user) {
+            failedCount++
+            items.push({
+              rowIndex: i + 1,
+              success: false,
+              error: `处理人 "${row.assigneeName}" 不存在`,
+              data: row,
+            })
+            continue
+          }
+          assigneeId = user.id
+        }
+
+        const newTicket = get().addTicket({
+          title: row.title.trim(),
+          description: row.description.trim(),
+          category: row.category,
+          priority: row.priority,
+          creatorId,
+          assigneeId,
+          knowledgeId: null,
+        })
+
+        successCount++
+        items.push({
+          rowIndex: i + 1,
+          success: true,
+          ticket: newTicket,
+          data: row,
+        })
+      } catch (e) {
+        failedCount++
+        items.push({
+          rowIndex: i + 1,
+          success: false,
+          error: e instanceof Error ? e.message : '未知错误',
+          data: row,
+        })
+      }
+
+      if (onProgress) {
+        onProgress(i + 1, rows.length)
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    return {
+      total: rows.length,
+      success: successCount,
+      failed: failedCount,
+      items,
     }
   },
 }))

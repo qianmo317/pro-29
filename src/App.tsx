@@ -7,6 +7,7 @@ import Dashboard from '@/pages/Dashboard/Dashboard'
 import TicketList from '@/pages/TicketList/TicketList'
 import TicketDetail from '@/pages/TicketDetail/TicketDetail'
 import TicketCreate from '@/pages/TicketCreate/TicketCreate'
+import TicketImport from '@/pages/TicketImport/TicketImport'
 import KnowledgeList from '@/pages/Knowledge/KnowledgeList'
 import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail'
 import Reports from '@/pages/Reports/Reports'
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="tickets" element={<TicketList />} />
           <Route path="tickets/create" element={<TicketCreate />} />
+          <Route path="tickets/import" element={<TicketImport />} />
           <Route path="tickets/:id" element={<TicketDetail />} />
           <Route path="knowledge" element={<KnowledgeList />} />
           <Route path="knowledge/:id" element={<KnowledgeDetail />} />
