@@ -39,7 +39,7 @@ interface TicketState {
   addRecord: (ticketId: string, operatorId: string, action: string, content: string) => void
   getTicketById: (id: string) => Ticket | undefined
   getRecordsByTicketId: (id: string) => TicketRecord[]
-  getFilteredTickets: (filters: TicketFilters) => Ticket[]
+  getFilteredTickets: (filters: TicketFilters, users?: { id: string; name: string }[]) => Ticket[]
   addEvaluation: (ticketId: string, rating: number, comment: string, evaluatorId: string) => void
   getEvaluationByTicketId: (ticketId: string) => TicketEvaluation | undefined
   getEvaluationStats: () => Array<{ agentId: string; averageRating: number; count: number; distribution: Record<number, number> }>
@@ -320,7 +320,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     )
   },
 
-  getFilteredTickets: (filters) => {
+  getFilteredTickets: (filters, users) => {
     return get().tickets.filter(t => {
       if (filters.status && t.status !== filters.status) return false
       if (filters.priority && t.priority !== filters.priority) return false
@@ -329,7 +329,17 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       if (filters.tagId && !(t.tags ?? []).includes(filters.tagId)) return false
       if (filters.search) {
         const s = filters.search.toLowerCase()
-        return t.title.toLowerCase().includes(s) || t.id.toLowerCase().includes(s)
+        const titleMatch = t.title.toLowerCase().includes(s)
+        const idMatch = t.id.toLowerCase().includes(s)
+        const descriptionMatch = t.description.toLowerCase().includes(s)
+        let assigneeNameMatch = false
+        if (t.assigneeId && users) {
+          const assignee = users.find(u => u.id === t.assigneeId)
+          if (assignee && assignee.name.toLowerCase().includes(s)) {
+            assigneeNameMatch = true
+          }
+        }
+        return titleMatch || idMatch || descriptionMatch || assigneeNameMatch
       }
       return true
     })

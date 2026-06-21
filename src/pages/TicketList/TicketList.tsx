@@ -85,7 +85,7 @@ export default function TicketList() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
 
   const filteredTickets = useMemo(() => {
-    const result = getFilteredTickets(filters)
+    const result = getFilteredTickets(filters, users)
 
     result.sort((a, b) => {
       let comparison = 0
@@ -104,7 +104,7 @@ export default function TicketList() {
     })
 
     return result
-  }, [getFilteredTickets, filters, sortField, sortOrder])
+  }, [getFilteredTickets, filters, sortField, sortOrder, users])
 
   const totalPages = Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
@@ -137,6 +137,33 @@ export default function TicketList() {
       return <ChevronUp size={14} opacity={0.3} />
     }
     return sortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+  }
+
+  const highlightText = (text: string, keyword: string) => {
+    if (!keyword.trim()) return text
+    const lowerText = text.toLowerCase()
+    const lowerKeyword = keyword.toLowerCase()
+    const index = lowerText.indexOf(lowerKeyword)
+    if (index === -1) return text
+    const parts: (string | JSX.Element)[] = []
+    let lastIndex = 0
+    let currentIndex = index
+    while (currentIndex !== -1) {
+      if (currentIndex > lastIndex) {
+        parts.push(text.slice(lastIndex, currentIndex))
+      }
+      parts.push(
+        <Box key={currentIndex} as="span" bg="yellow.200" color="yellow.900" px={0.5} borderRadius="2px" fontWeight="600">
+          {text.slice(currentIndex, currentIndex + keyword.length)}
+        </Box>
+      )
+      lastIndex = currentIndex + keyword.length
+      currentIndex = lowerText.indexOf(lowerKeyword, lastIndex)
+    }
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex))
+    }
+    return <>{parts}</>
   }
 
   const toggleSelect = (id: string) => {
@@ -266,7 +293,7 @@ export default function TicketList() {
             <Search size={16} />
           </Box>
           <Input
-            placeholder="搜索工单标题或编号..."
+            placeholder="搜索工单标题、编号、描述或处理人..."
             value={filters.search || ''}
             onChange={e => updateFilter('search', e.target.value)}
             borderRadius="12px"
@@ -396,6 +423,25 @@ export default function TicketList() {
                   pageTickets.map(ticket => {
                     const isMerged = isTicketMerged(ticket.id)
                     const isSelected = selectedIds.includes(ticket.id)
+                    const searchKeyword = filters.search || ''
+                    const assigneeName = getUserName(ticket.assigneeId)
+                    const descriptionContainsMatch = searchKeyword.trim() && ticket.description.toLowerCase().includes(searchKeyword.toLowerCase())
+                    let descriptionSnippet: JSX.Element | null = null
+                    if (descriptionContainsMatch) {
+                      const lowerDesc = ticket.description.toLowerCase()
+                      const lowerKw = searchKeyword.toLowerCase()
+                      const matchIndex = lowerDesc.indexOf(lowerKw)
+                      const snippetStart = Math.max(0, matchIndex - 20)
+                      const snippetEnd = Math.min(ticket.description.length, matchIndex + searchKeyword.length + 20)
+                      const prefix = snippetStart > 0 ? '...' : ''
+                      const suffix = snippetEnd < ticket.description.length ? '...' : ''
+                      const snippetText = prefix + ticket.description.slice(snippetStart, snippetEnd) + suffix
+                      descriptionSnippet = (
+                        <Text fontSize="xs" color="gray.500" mt={1} isTruncated>
+                          {highlightText(snippetText, searchKeyword)}
+                        </Text>
+                      )
+                    }
                     return (
                       <Tr
                         key={ticket.id}
@@ -412,7 +458,7 @@ export default function TicketList() {
                           />
                         </Td>
                         <Td fontWeight="600" color={isMerged ? 'gray.400' : 'brand.600'}>
-                          {ticket.id}
+                          {highlightText(ticket.id, searchKeyword)}
                           {ticket.mergedToId && (
                             <Badge ml={2} colorScheme="gray" fontSize="xs">已合并</Badge>
                           )}
@@ -422,7 +468,12 @@ export default function TicketList() {
                             </Badge>
                           )}
                         </Td>
-                        <Td maxW="240px" isTruncated>{ticket.title}</Td>
+                        <Td maxW="280px">
+                          <Box isTruncated>
+                            {highlightText(ticket.title, searchKeyword)}
+                          </Box>
+                          {descriptionSnippet}
+                        </Td>
                         <Td>{CATEGORY_LABELS[ticket.category]}</Td>
                         <Td onClick={(e) => e.stopPropagation()}>
                           {(ticket.tags ?? []).length > 0 ? (
@@ -448,7 +499,7 @@ export default function TicketList() {
                         </Td>
                         <Td><StatusBadge status={ticket.status} size="sm" /></Td>
                         <Td>{getDepartmentName(ticket.departmentId)}</Td>
-                        <Td>{getUserName(ticket.assigneeId)}</Td>
+                        <Td>{highlightText(assigneeName, searchKeyword)}</Td>
                         <Td fontSize="sm" color="gray.500">{formatDateTime(ticket.createdAt)}</Td>
                         <Td><SLAIndicator slaDeadline={ticket.slaDeadline} size="sm" /></Td>
                       </Tr>
