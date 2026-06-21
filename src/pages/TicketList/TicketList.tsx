@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useTicketStore, type TicketFilters } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
 import { useDepartmentStore } from '@/store/departmentStore'
@@ -33,17 +33,26 @@ import {
   ModalFooter,
   ModalBody,
   ModalCloseButton,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
+  AlertDialogContent,
+  Alert,
+  AlertIcon,
   useDisclosure,
   useToast,
   Badge,
+  Textarea,
 } from '@chakra-ui/react'
-import { Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Upload, Merge, Tags, Download } from 'lucide-react'
+import { Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Upload, Merge, Tags, Download, UserCheck, XCircle, AlertTriangle } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import TagBadge from '@/components/TagBadge/TagBadge'
 import TagManageModal from '@/components/TagManageModal/TagManageModal'
 import { PRIORITY_LABELS, PRIORITY_COLORS, CATEGORY_LABELS, STATUS_LABELS } from '@/types'
-import { type TicketStatus, type TicketPriority, type TicketCategory, type Ticket } from '@/types'
+import { type TicketStatus, type TicketPriority, type TicketCategory, type Ticket, type BatchOperationResult } from '@/types'
 import { exportTicketsToExcel } from '@/utils/exportUtils'
 
 type SortField = 'createdAt' | 'priority' | 'slaDeadline'
@@ -69,13 +78,17 @@ function formatDateTime(iso: string): string {
 
 export default function TicketList() {
   const navigate = useNavigate()
-  const { tickets, mergeTickets, isTicketMerged, getFilteredTickets } = useTicketStore()
-  const { users, currentUser } = useUserStore()
+  const { tickets, mergeTickets, isTicketMerged, getFilteredTickets, batchAssignTickets, batchCloseTickets } = useTicketStore()
+  const { users, currentUser, getAgentsByDepartment } = useUserStore()
   const { departments, getDepartmentName } = useDepartmentStore()
   const tags = useTagStore((s) => s.tags)
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const { isOpen: isTagOpen, onOpen: onTagOpen, onClose: onTagClose } = useDisclosure()
+  const { isOpen: isBatchAssignOpen, onOpen: onBatchAssignOpen, onClose: onBatchAssignClose } = useDisclosure()
+  const { isOpen: isBatchCloseOpen, onOpen: onBatchCloseOpen, onClose: onBatchCloseClose } = useDisclosure()
+  const { isOpen: isBatchResultOpen, onOpen: onBatchResultOpen, onClose: onBatchResultClose } = useDisclosure()
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
   const [filters, setFilters] = useState<TicketFilters>({})
   const [page, setPage] = useState(1)
@@ -83,6 +96,12 @@ export default function TicketList() {
   const [mainTicketId, setMainTicketId] = useState('')
   const [sortField, setSortField] = useState<SortField>('createdAt')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+
+  const [batchDepartmentId, setBatchDepartmentId] = useState('')
+  const [batchAssigneeId, setBatchAssigneeId] = useState('')
+  const [batchCloseRemark, setBatchCloseRemark] = useState('')
+  const [batchResult, setBatchResult] = useState<BatchOperationResult | null>(null)
+  const [batchResultTitle, setBatchResultTitle] = useState('')
 
   const filteredTickets = useMemo(() => {
     const result = getFilteredTickets(filters, users)
@@ -231,6 +250,79 @@ export default function TicketList() {
     }
   }
 
+  const batchAgents = useMemo(() => {
+    if (batchDepartmentId) {
+      return getAgentsByDepartment(batchDepartmentId)
+    }
+    return users.filter(u => u.role === 'agent' || u.role === 'admin')
+  }, [users, batchDepartmentId, getAgentsByDepartment])
+
+  const handleBatchDepartmentChange = (deptId: string) => {
+    setBatchDepartmentId(deptId)
+    if (deptId && batchAssigneeId) {
+      const deptAgentIds = getAgentsByDepartment(deptId).map(u => u.id)
+      if (!deptAgentIds.includes(batchAssigneeId)) {
+        setBatchAssigneeId('')
+      }
+    }
+  }
+
+  const showBatchResult = (result: BatchOperationResult, title: string) => {
+    setBatchResult(result)
+    setBatchResultTitle(title)
+    if (result.failed === 0) {
+      toast({ title: `${title}成功 ${result.success} 条`, status: 'success', duration: 3000 })
+    } else if (result.success === 0) {
+      toast({ title: `${title}失败，共 ${result.failed} 条未处理`, status: 'error', duration: 4000 })
+      onBatchResultOpen()
+    } else {
+      toast({ title: `${title}成功 ${result.success} 条，${result.failed} 条未处理`, status: 'warning', duration: 4000 })
+      onBatchResultOpen()
+    }
+  }
+
+  const handleBatchAssignClick = () => {
+    if (selectedIds.length === 0) {
+      toast({ title: '请先选择工单', status: 'warning', duration: 2000 })
+      return
+    }
+    setBatchDepartmentId('')
+    setBatchAssigneeId('')
+    onBatchAssignOpen()
+  }
+
+  const handleConfirmBatchAssign = () => {
+    if (!currentUser) return
+    if (!batchAssigneeId) {
+      toast({ title: '请选择处理人', status: 'warning', duration: 2000 })
+      return
+    }
+    const result = batchAssignTickets(selectedIds, batchAssigneeId, currentUser.id)
+    setSelectedIds([])
+    setBatchAssigneeId('')
+    setBatchDepartmentId('')
+    onBatchAssignClose()
+    showBatchResult(result, '批量分配处理人')
+  }
+
+  const handleBatchCloseClick = () => {
+    if (selectedIds.length === 0) {
+      toast({ title: '请先选择工单', status: 'warning', duration: 2000 })
+      return
+    }
+    setBatchCloseRemark('')
+    onBatchCloseOpen()
+  }
+
+  const handleConfirmBatchClose = () => {
+    if (!currentUser) return
+    const result = batchCloseTickets(selectedIds, currentUser.id, batchCloseRemark)
+    setSelectedIds([])
+    setBatchCloseRemark('')
+    onBatchCloseClose()
+    showBatchResult(result, '批量关闭工单')
+  }
+
   const selectedTickets = selectedIds.map(id => tickets.find(t => t.id === id)).filter((t): t is Ticket => !!t)
 
   const selectableCount = pageTickets.filter(t => !isTicketMerged(t.id)).length
@@ -243,9 +335,27 @@ export default function TicketList() {
         <Spacer />
         <HStack spacing={3}>
           {selectedIds.length > 0 && (
-            <Badge colorScheme="blue" px={3} py={1} borderRadius="8px">
-              已选 {selectedIds.length} 项
-            </Badge>
+            <>
+              <Badge colorScheme="blue" px={3} py={1} borderRadius="8px">
+                已选 {selectedIds.length} 项
+              </Badge>
+              <Button
+                leftIcon={<UserCheck size={16} />}
+                variant="outline"
+                colorScheme="blue"
+                onClick={handleBatchAssignClick}
+              >
+                批量分配
+              </Button>
+              <Button
+                leftIcon={<XCircle size={16} />}
+                variant="outline"
+                colorScheme="red"
+                onClick={handleBatchCloseClick}
+              >
+                批量关闭
+              </Button>
+            </>
           )}
           <Button
             leftIcon={<Tags size={16} />}
@@ -591,6 +701,169 @@ export default function TicketList() {
             </Button>
             <Button colorScheme="purple" onClick={handleConfirmMerge}>
               确认合并
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={isBatchAssignOpen} onClose={onBatchAssignClose}>
+        <ModalOverlay />
+        <ModalContent borderRadius="16px">
+          <ModalHeader>批量分配处理人</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack align="stretch" spacing={4}>
+              <Alert status="info" borderRadius="8px">
+                <AlertIcon />
+                <Text fontSize="sm">
+                  将为已选的 <Text as="span" fontWeight="700">{selectedIds.length}</Text> 个工单分配处理人，状态将更新为「已分配」。
+                </Text>
+              </Alert>
+              <Box>
+                <Text fontSize="sm" fontWeight="600" mb={2}>所属部门（可选，用于筛选处理人）</Text>
+                <Select
+                  placeholder="全部部门"
+                  value={batchDepartmentId}
+                  onChange={e => handleBatchDepartmentChange(e.target.value)}
+                  borderRadius="8px"
+                >
+                  {departments.map(dept => (
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  ))}
+                </Select>
+              </Box>
+              <Box>
+                <Text fontSize="sm" fontWeight="600" mb={2}>处理人 <Text as="span" color="red.500">*</Text></Text>
+                <Select
+                  placeholder="请选择处理人"
+                  value={batchAssigneeId}
+                  onChange={e => setBatchAssigneeId(e.target.value)}
+                  borderRadius="8px"
+                  isDisabled={!!batchDepartmentId && batchAgents.length === 0}
+                >
+                  {batchAgents.map(agent => (
+                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                  ))}
+                </Select>
+                {batchDepartmentId && batchAgents.length === 0 && (
+                  <Text fontSize="xs" color="orange.500" mt={1}>该部门暂无处理人</Text>
+                )}
+              </Box>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={onBatchAssignClose}>
+              取消
+            </Button>
+            <Button
+              colorScheme="blue"
+              leftIcon={<UserCheck size={16} />}
+              onClick={handleConfirmBatchAssign}
+              isDisabled={!batchAssigneeId}
+            >
+              确认分配（{selectedIds.length}）
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <AlertDialog
+        isOpen={isBatchCloseOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={onBatchCloseClose}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent borderRadius="16px">
+            <AlertDialogHeader fontSize="lg" fontWeight="600">
+              确认批量关闭工单
+            </AlertDialogHeader>
+            <AlertDialogBody>
+              <VStack align="stretch" spacing={4}>
+                <Alert status="warning" borderRadius="8px">
+                  <AlertIcon />
+                  <Text fontSize="sm">
+                    即将关闭已选的 <Text as="span" fontWeight="700">{selectedIds.length}</Text> 个工单，此操作会记录到处理日志，请确认无误。
+                  </Text>
+                </Alert>
+                <Text fontSize="sm" color="gray.500">
+                  其中「已关闭」「已驳回」「已合并」的工单将被自动跳过并在结果中提示。
+                </Text>
+                <Box>
+                  <Text fontSize="sm" fontWeight="600" mb={2}>关闭备注（选填）</Text>
+                  <Textarea
+                    value={batchCloseRemark}
+                    onChange={e => setBatchCloseRemark(e.target.value)}
+                    placeholder="可填写本次批量关闭的统一说明..."
+                    borderRadius="8px"
+                    rows={3}
+                  />
+                </Box>
+              </VStack>
+            </AlertDialogBody>
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={onBatchCloseClose}>
+                取消
+              </Button>
+              <Button
+                colorScheme="red"
+                leftIcon={<XCircle size={16} />}
+                onClick={handleConfirmBatchClose}
+                ml={3}
+              >
+                确认关闭（{selectedIds.length}）
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
+      <Modal isOpen={isBatchResultOpen} onClose={onBatchResultClose}>
+        <ModalOverlay />
+        <ModalContent borderRadius="16px">
+          <ModalHeader>{batchResultTitle}结果</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            {batchResult && (
+              <VStack align="stretch" spacing={4}>
+                <HStack spacing={3}>
+                  <Badge colorScheme="green" px={3} py={1} borderRadius="8px">
+                    成功 {batchResult.success} 条
+                  </Badge>
+                  {batchResult.failed > 0 && (
+                    <Badge colorScheme="red" px={3} py={1} borderRadius="8px">
+                      未处理 {batchResult.failed} 条
+                    </Badge>
+                  )}
+                </HStack>
+                {batchResult.failedItems.length > 0 ? (
+                  <Box>
+                    <HStack spacing={2} mb={2}>
+                      <AlertTriangle size={16} color="#E53E3E" />
+                      <Text fontSize="sm" fontWeight="600" color="red.500">以下工单未能处理</Text>
+                    </HStack>
+                    <VStack align="stretch" spacing={2} maxH="320px" overflowY="auto">
+                      {batchResult.failedItems.map(item => (
+                        <Card key={item.id} borderRadius="8px" bg="red.50" border="1px solid" borderColor="red.100">
+                          <CardBody py={2} px={3}>
+                            <HStack>
+                              <Text fontSize="sm" fontWeight="600" color="red.600">{item.id}</Text>
+                              <Text fontSize="sm" isTruncated flex={1}>{item.title}</Text>
+                            </HStack>
+                            <Text fontSize="xs" color="red.500" mt={1}>{item.reason}</Text>
+                          </CardBody>
+                        </Card>
+                      ))}
+                    </VStack>
+                  </Box>
+                ) : (
+                  <Text fontSize="sm" color="gray.500">所有工单均已成功处理。</Text>
+                )}
+              </VStack>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="blue" onClick={onBatchResultClose}>
+              知道了
             </Button>
           </ModalFooter>
         </ModalContent>

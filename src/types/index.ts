@@ -172,6 +172,19 @@ export interface ImportResult {
   items: ImportResultItem[]
 }
 
+export interface BatchOperationResultItem {
+  id: string
+  title: string
+  reason: string
+}
+
+export interface BatchOperationResult {
+  total: number
+  success: number
+  failed: number
+  failedItems: BatchOperationResultItem[]
+}
+
 export const IMPORT_TEMPLATE_HEADERS = [
   { key: 'title', label: '标题', required: true },
   { key: 'description', label: '描述', required: true },

@@ -9,6 +9,7 @@ import type {
   ImportTicketRow,
   ImportResult,
   ImportResultItem,
+  BatchOperationResult,
 } from '@/types'
 import { CATEGORY_LABELS, PRIORITY_LABELS } from '@/types'
 import { MOCK_TICKETS, MOCK_RECORDS, MOCK_EVALUATIONS } from '@/utils/mockData'
@@ -76,6 +77,8 @@ interface TicketState {
   getMainTicket: (ticketId: string) => Ticket | undefined
   isTicketMerged: (ticketId: string) => boolean
   removeTag: (tagId: string) => void
+  batchAssignTickets: (ticketIds: string[], assigneeId: string, operatorId: string) => BatchOperationResult
+  batchCloseTickets: (ticketIds: string[], operatorId: string, content: string) => BatchOperationResult
 }
 
 export interface TicketFilters {
@@ -731,5 +734,119 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       saveToStorage(STORAGE_KEY_TICKETS, tickets)
       return { tickets }
     })
+  },
+
+  batchAssignTickets: (ticketIds, assigneeId, operatorId) => {
+    const now = new Date().toISOString()
+    const failedItems: BatchOperationResult['failedItems'] = []
+    const assignableTickets: Ticket[] = []
+    const newRecords: TicketRecord[] = []
+
+    ticketIds.forEach((id, index) => {
+      const ticket = get().getTicketById(id)
+      if (!ticket) {
+        failedItems.push({ id, title: '未知工单', reason: '工单不存在' })
+        return
+      }
+      if (get().isTicketMerged(id)) {
+        failedItems.push({ id, title: ticket.title, reason: '工单已合并，无法操作' })
+        return
+      }
+      assignableTickets.push(ticket)
+      newRecords.push({
+        id: `r_${Date.now()}_batchassign_${index}`,
+        ticketId: id,
+        operatorId,
+        action: 'assigned',
+        content: '批量分配处理人',
+        createdAt: now,
+      })
+    })
+
+    if (assignableTickets.length > 0) {
+      const assignableIds = new Set(assignableTickets.map(t => t.id))
+      set((state) => {
+        const tickets = state.tickets.map(t =>
+          assignableIds.has(t.id)
+            ? { ...t, assigneeId, status: 'assigned' as TicketStatus, updatedAt: now }
+            : t
+        )
+        const records = [...newRecords, ...state.records]
+        saveToStorage(STORAGE_KEY_TICKETS, tickets)
+        saveToStorage(STORAGE_KEY_RECORDS, records)
+        return { tickets, records }
+      })
+      newRecords.forEach(record => {
+        useNotificationStore.getState().createNotificationsForFollowers(record.ticketId, record, operatorId)
+      })
+    }
+
+    return {
+      total: ticketIds.length,
+      success: assignableTickets.length,
+      failed: failedItems.length,
+      failedItems,
+    }
+  },
+
+  batchCloseTickets: (ticketIds, operatorId, content) => {
+    const now = new Date().toISOString()
+    const failedItems: BatchOperationResult['failedItems'] = []
+    const closableTickets: Ticket[] = []
+    const newRecords: TicketRecord[] = []
+
+    ticketIds.forEach((id, index) => {
+      const ticket = get().getTicketById(id)
+      if (!ticket) {
+        failedItems.push({ id, title: '未知工单', reason: '工单不存在' })
+        return
+      }
+      if (get().isTicketMerged(id)) {
+        failedItems.push({ id, title: ticket.title, reason: '工单已合并，无法操作' })
+        return
+      }
+      if (ticket.status === 'closed') {
+        failedItems.push({ id, title: ticket.title, reason: '工单已关闭，无需重复操作' })
+        return
+      }
+      if (ticket.status === 'rejected') {
+        failedItems.push({ id, title: ticket.title, reason: '工单已驳回，无法关闭' })
+        return
+      }
+      closableTickets.push(ticket)
+      newRecords.push({
+        id: `r_${Date.now()}_batchclose_${index}`,
+        ticketId: id,
+        operatorId,
+        action: 'status_changed',
+        content: content.trim() ? `批量关闭：${content.trim()}` : '批量关闭工单',
+        createdAt: now,
+      })
+    })
+
+    if (closableTickets.length > 0) {
+      const closableIds = new Set(closableTickets.map(t => t.id))
+      set((state) => {
+        const tickets = state.tickets.map(t =>
+          closableIds.has(t.id)
+            ? { ...t, status: 'closed' as TicketStatus, updatedAt: now }
+            : t
+        )
+        const records = [...newRecords, ...state.records]
+        saveToStorage(STORAGE_KEY_TICKETS, tickets)
+        saveToStorage(STORAGE_KEY_RECORDS, records)
+        return { tickets, records }
+      })
+      newRecords.forEach(record => {
+        useNotificationStore.getState().createNotificationsForFollowers(record.ticketId, record, operatorId)
+      })
+    }
+
+    return {
+      total: ticketIds.length,
+      success: closableTickets.length,
+      failed: failedItems.length,
+      failedItems,
+    }
   },
 }))
