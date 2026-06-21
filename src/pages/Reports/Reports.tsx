@@ -1,11 +1,13 @@
-import { Box, Card, CardBody, Heading, Text, SimpleGrid, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td, Icon, Progress, Tabs, TabList, Tab, TabPanels, TabPanel } from '@chakra-ui/react'
-import { TrendingUp, PieChart as PieChartIcon, Users, Clock, Star, Building2 } from 'lucide-react'
+import { Box, Card, CardBody, Heading, Text, SimpleGrid, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td, Icon, Progress, Tabs, TabList, Tab, TabPanels, TabPanel, Button, Spacer, Flex, useToast } from '@chakra-ui/react'
+import { TrendingUp, PieChart as PieChartIcon, Users, Clock, Star, Building2, Download, FileImage } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, LabelList } from 'recharts'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
 import { useDepartmentStore } from '@/store/departmentStore'
 import type { TicketCategory, TicketRecord } from '@/types'
 import { CATEGORY_LABELS, MAX_RATING } from '@/types'
+import { exportReportsToExcel, captureChartScreenshots, type ChartScreenshotResult } from '@/utils/exportUtils'
+import { useState } from 'react'
 
 const OVERVIEW_CONFIG = [
   { label: '本月新增工单', icon: TrendingUp, gradient: 'linear-gradient(135deg, #6C5CE7, #A29BFE)' },
@@ -136,9 +138,15 @@ export default function Reports() {
   const { tickets, records, evaluations, getStats, getEvaluationStats, getDepartmentStats } = useTicketStore()
   const { users } = useUserStore()
   const { departments } = useDepartmentStore()
+  const toast = useToast()
+  const [exporting, setExporting] = useState(false)
 
   const stats = getStats()
   const overviewStats = [stats.thisMonthCreated, stats.thisMonthClosed, stats.avgResolutionTime, stats.slaComplianceRate]
+  const overview = OVERVIEW_CONFIG.map((config, index) => ({
+    label: config.label,
+    value: overviewStats[index],
+  }))
 
   const trendData = getLast7DaysData(tickets)
   const categoryData = getCategoryData(tickets)
@@ -153,6 +161,7 @@ export default function Reports() {
     处理中: d.inProgressCount,
     待处理: d.pendingCount,
   }))
+  const departmentPieData = departmentStats.filter(d => d.totalCount > 0).map(d => ({ name: d.departmentName, value: d.totalCount }))
 
   const evaluationStats = getEvaluationStats()
   const evalStatMap = new Map(evaluationStats.map(s => [s.agentId, s]))
@@ -182,11 +191,103 @@ export default function Reports() {
     count: d.count,
   }))
 
+  const performanceDataWithRating = performanceData.map(d => {
+    const s = evalByName.get(d.name)
+    return {
+      ...d,
+      avgRating: s && s.count > 0 ? s.averageRating.toFixed(1) : undefined,
+      ratingCount: s?.count || 0,
+    }
+  })
+
+  const evaluationSummary = {
+    totalEvaluations,
+    overallAvgRating: totalEvaluations > 0 ? overallAvgRating.toFixed(1) : '0.0',
+    ratedAgents: ratingBreakdown.length,
+  }
+
+  const handleExport = async (includeCharts: boolean) => {
+    setExporting(true)
+    try {
+      let screenshots: ChartScreenshotResult[] | undefined
+
+      if (includeCharts) {
+        const chartSelectors = [
+          { key: 'trend_line', selector: '#chart-trend', name: '趋势图' },
+          { key: 'category_pie', selector: '#chart-category', name: '分类饼图' },
+          { key: 'dept_bar', selector: '#chart-dept-bar', name: '部门柱状图' },
+          { key: 'dept_pie', selector: '#chart-dept-pie', name: '部门饼图' },
+          { key: 'rating_bar', selector: '#chart-rating', name: '评分柱状图' },
+        ]
+        screenshots = await captureChartScreenshots(chartSelectors)
+        if (screenshots.length === 0) {
+          toast({ title: '图表截图失败，将只导出数据', status: 'warning', duration: 3000 })
+        } else {
+          toast({ title: `成功截取 ${screenshots.length} 个图表`, status: 'info', duration: 2000 })
+        }
+      }
+
+      await exportReportsToExcel(
+        {
+          overview,
+          trendData,
+          categoryData,
+          departmentChartData: deptTicketChartData,
+          departmentPieData,
+          departmentStats,
+          performanceData: performanceDataWithRating,
+          evaluationSummary,
+          ratingChartData,
+          ratingBreakdown,
+        },
+        screenshots
+      )
+
+      toast({
+        title: includeCharts ? '报表和图表已导出' : '报表数据已导出',
+        status: 'success',
+        duration: 3000,
+      })
+    } catch (e) {
+      toast({
+        title: '导出失败：' + (e instanceof Error ? e.message : '未知错误'),
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <Box p={6}>
-      <Heading size="lg" mb={6}>
-        报表统计
-      </Heading>
+      <Flex align="center" mb={6}>
+        <Heading size="lg">
+          报表统计
+        </Heading>
+        <Spacer />
+        <HStack spacing={3}>
+          <Button
+            leftIcon={<Download size={16} />}
+            variant="outline"
+            colorScheme="green"
+            isLoading={exporting}
+            loadingText="导出中"
+            onClick={() => handleExport(false)}
+          >
+            仅导出数据
+          </Button>
+          <Button
+            leftIcon={<FileImage size={16} />}
+            colorScheme="green"
+            isLoading={exporting}
+            loadingText="导出中"
+            onClick={() => handleExport(true)}
+          >
+            导出图表+数据
+          </Button>
+        </HStack>
+      </Flex>
 
       <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={5} mb={6}>
         {OVERVIEW_CONFIG.map((config, index) => (
@@ -220,7 +321,7 @@ export default function Reports() {
       </SimpleGrid>
 
       <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={5} mb={6}>
-        <Card borderRadius="16px">
+        <Card borderRadius="16px" id="chart-trend">
           <CardBody>
             <HStack mb={4}>
               <Icon as={TrendingUp} color="brand.500" boxSize={5} />
@@ -244,7 +345,7 @@ export default function Reports() {
           </CardBody>
         </Card>
 
-        <Card borderRadius="16px">
+        <Card borderRadius="16px" id="chart-category">
           <CardBody>
             <HStack mb={4}>
               <Icon as={PieChartIcon} color="brand.500" boxSize={5} />
@@ -294,7 +395,7 @@ export default function Reports() {
         <TabPanels>
           <TabPanel px={0} pb={0}>
             <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={5} mb={5}>
-              <Card borderRadius="16px">
+              <Card borderRadius="16px" id="chart-dept-bar">
                 <CardBody>
                   <HStack mb={4}>
                     <Icon as={Building2} color="brand.500" boxSize={5} />
@@ -320,7 +421,7 @@ export default function Reports() {
                 </CardBody>
               </Card>
 
-              <Card borderRadius="16px">
+              <Card borderRadius="16px" id="chart-dept-pie">
                 <CardBody>
                   <HStack mb={4}>
                     <Icon as={PieChartIcon} color="brand.500" boxSize={5} />
@@ -505,7 +606,7 @@ export default function Reports() {
               </SimpleGrid>
 
               <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={5}>
-                <Box h={300}>
+                <Box h={300} id="chart-rating">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={ratingChartData} layout="vertical" margin={{ left: 10, right: 40 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#EDF2F7" horizontal={false} />

@@ -37,13 +37,14 @@ import {
   useToast,
   Badge,
 } from '@chakra-ui/react'
-import { Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Upload, Merge, Tags } from 'lucide-react'
+import { Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Upload, Merge, Tags, Download } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import TagBadge from '@/components/TagBadge/TagBadge'
 import TagManageModal from '@/components/TagManageModal/TagManageModal'
 import { PRIORITY_LABELS, PRIORITY_COLORS, CATEGORY_LABELS, STATUS_LABELS } from '@/types'
 import { type TicketStatus, type TicketPriority, type TicketCategory, type Ticket } from '@/types'
+import { exportTicketsToExcel } from '@/utils/exportUtils'
 
 type SortField = 'createdAt' | 'priority' | 'slaDeadline'
 type SortOrder = 'asc' | 'desc'
@@ -184,6 +185,25 @@ export default function TicketList() {
     onClose()
   }
 
+  const handleExport = () => {
+    if (filteredTickets.length === 0) {
+      toast({ title: '当前没有可导出的工单数据', status: 'warning', duration: 2000 })
+      return
+    }
+    try {
+      exportTicketsToExcel({
+        tickets: filteredTickets,
+        users,
+        departments,
+        tags,
+        filters,
+      })
+      toast({ title: `成功导出 ${filteredTickets.length} 条工单数据`, status: 'success', duration: 3000 })
+    } catch (e) {
+      toast({ title: '导出失败：' + (e instanceof Error ? e.message : '未知错误'), status: 'error', duration: 3000 })
+    }
+  }
+
   const selectedTickets = selectedIds.map(id => tickets.find(t => t.id === id)).filter((t): t is Ticket => !!t)
 
   const selectableCount = pageTickets.filter(t => !isTicketMerged(t.id)).length
@@ -222,6 +242,14 @@ export default function TicketList() {
             onClick={() => navigate('/tickets/import')}
           >
             批量导入
+          </Button>
+          <Button
+            leftIcon={<Download size={16} />}
+            variant="outline"
+            colorScheme="green"
+            onClick={handleExport}
+          >
+            导出Excel
           </Button>
           <Button
             leftIcon={<Plus size={16} />}
