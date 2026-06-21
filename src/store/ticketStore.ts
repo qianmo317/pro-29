@@ -21,6 +21,7 @@ interface EditableTicketFields {
   description: string
   category: TicketCategory
   priority: TicketPriority
+  tags: string[]
 }
 
 interface TicketState {
@@ -29,7 +30,7 @@ interface TicketState {
   evaluations: TicketEvaluation[]
   nextId: number
   initialize: () => void
-  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds'>) => Ticket
+  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds' | 'tags'> & { tags?: string[] }) => Ticket
   updateTicket: (id: string, updates: Partial<Ticket>) => void
   editTicket: (id: string, updates: EditableTicketFields, operatorId: string) => void
   assignTicket: (id: string, assigneeId: string, operatorId: string) => void
@@ -74,6 +75,7 @@ interface TicketState {
   getMergedTickets: (ticketId: string) => Ticket[]
   getMainTicket: (ticketId: string) => Ticket | undefined
   isTicketMerged: (ticketId: string) => boolean
+  removeTag: (tagId: string) => void
 }
 
 export interface TicketFilters {
@@ -81,6 +83,7 @@ export interface TicketFilters {
   priority?: TicketPriority
   category?: TicketCategory
   departmentId?: string
+  tagId?: string
   search?: string
 }
 
@@ -106,6 +109,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
         mergedToId: t.mergedToId ?? null,
         mergedTicketIds: t.mergedTicketIds ?? [],
         departmentId: t.departmentId ?? null,
+        tags: t.tags ?? [],
       }))
       set({ tickets: normalizedTickets })
     }
@@ -128,6 +132,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       mergedToId: null,
       mergedTicketIds: [],
       departmentId: ticketData.departmentId ?? null,
+      tags: ticketData.tags ?? [],
     }
     const newRecord: TicketRecord = {
       id: `r_${Date.now()}`,
@@ -170,6 +175,9 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     if (updates.category !== ticket.category) changes.push(`分类「${CATEGORY_LABELS[ticket.category]}」→「${CATEGORY_LABELS[updates.category]}」`)
     if (updates.priority !== ticket.priority) changes.push(`优先级「${PRIORITY_LABELS[ticket.priority]}」→「${PRIORITY_LABELS[updates.priority]}」`)
     if (updates.description !== ticket.description) changes.push('描述已修改')
+    const oldTags = [...(ticket.tags ?? [])].sort().join(',')
+    const newTags = [...updates.tags].sort().join(',')
+    if (oldTags !== newTags) changes.push('标签已修改')
 
     if (changes.length === 0) return
 
@@ -191,6 +199,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
               description: updates.description,
               category: updates.category,
               priority: updates.priority,
+              tags: updates.tags,
               updatedAt: now,
             }
           : t
@@ -317,6 +326,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       if (filters.priority && t.priority !== filters.priority) return false
       if (filters.category && t.category !== filters.category) return false
       if (filters.departmentId && t.departmentId !== filters.departmentId) return false
+      if (filters.tagId && !(t.tags ?? []).includes(filters.tagId)) return false
       if (filters.search) {
         const s = filters.search.toLowerCase()
         return t.title.toLowerCase().includes(s) || t.id.toLowerCase().includes(s)
@@ -699,5 +709,17 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   isTicketMerged: (ticketId) => {
     const ticket = get().getTicketById(ticketId)
     return ticket?.status === 'merged' || !!ticket?.mergedToId
+  },
+
+  removeTag: (tagId) => {
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        (t.tags ?? []).includes(tagId)
+          ? { ...t, tags: (t.tags ?? []).filter(id => id !== tagId) }
+          : t
+      )
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      return { tickets }
+    })
   },
 }))

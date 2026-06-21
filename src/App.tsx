@@ -21,6 +21,7 @@ import { useNotificationStore } from '@/store/notificationStore'
 import { useScheduledTicketStore } from '@/store/scheduledTicketStore'
 import { useDepartmentStore } from '@/store/departmentStore'
 import { useKnowledgeStore } from '@/store/knowledgeStore'
+import { useTagStore } from '@/store/tagStore'
 
 export default function App() {
   const initAuth = useUserStore((s) => s.initAuth)
@@ -31,6 +32,7 @@ export default function App() {
   const initScheduled = useScheduledTicketStore((s) => s.initialize)
   const initDepartments = useDepartmentStore((s) => s.initialize)
   const initKnowledge = useKnowledgeStore((s) => s.initialize)
+  const initTags = useTagStore((s) => s.initialize)
   const processDueTickets = useScheduledTicketStore((s) => s.processDueTickets)
 
   useEffect(() => {
@@ -42,12 +44,13 @@ export default function App() {
     initScheduled()
     initDepartments()
     initKnowledge()
+    initTags()
     processDueTickets()
     const interval = setInterval(() => {
       processDueTickets()
     }, 30000)
     return () => clearInterval(interval)
-  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, processDueTickets])
+  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, initTags, processDueTickets])
 
   return (
     <Router>

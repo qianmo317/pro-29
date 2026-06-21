@@ -36,6 +36,8 @@ import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bel
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import Timeline from '@/components/Timeline/Timeline'
+import TagBadge from '@/components/TagBadge/TagBadge'
+import TagSelect from '@/components/TagSelect/TagSelect'
 import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS, MAX_RATING, RATING_LABELS } from '@/types'
 import { type TicketStatus, type TicketCategory, type TicketPriority } from '@/types'
 import { FormControl, FormLabel, FormErrorMessage } from '@chakra-ui/react'
@@ -80,6 +82,7 @@ export default function TicketDetail() {
   const [editDescription, setEditDescription] = useState('')
   const [editCategory, setEditCategory] = useState<TicketCategory>('software')
   const [editPriority, setEditPriority] = useState<TicketPriority>('medium')
+  const [editTags, setEditTags] = useState<string[]>([])
   const [editSubmitted, setEditSubmitted] = useState(false)
 
   const [evalRating, setEvalRating] = useState(0)
@@ -109,6 +112,7 @@ export default function TicketDetail() {
     setEditDescription(ticket.description)
     setEditCategory(ticket.category)
     setEditPriority(ticket.priority)
+    setEditTags(ticket.tags ?? [])
     setEditSubmitted(false)
     onEditOpen()
   }
@@ -134,6 +138,7 @@ export default function TicketDetail() {
         description: editDescription.trim(),
         category: editCategory,
         priority: editPriority,
+        tags: editTags,
       },
       currentUser.id
     )
@@ -676,6 +681,18 @@ export default function TicketDetail() {
                       <Text fontSize="sm" color="gray.500" w="80px" flexShrink={0}>SLA 截止</Text>
                       <Text fontSize="sm">{formatDateTime(ticket.slaDeadline)}</Text>
                     </HStack>
+                    <HStack spacing={2} gridColumn="span 2" align="flex-start">
+                      <Text fontSize="sm" color="gray.500" w="80px" flexShrink={0} mt="2px">标签</Text>
+                      {(ticket.tags ?? []).length > 0 ? (
+                        <HStack spacing={2} flexWrap="wrap">
+                          {(ticket.tags ?? []).map(tid => (
+                            <TagBadge key={tid} tagId={tid} size="md" />
+                          ))}
+                        </HStack>
+                      ) : (
+                        <Text fontSize="sm" color="gray.300">无</Text>
+                      )}
+                    </HStack>
                   </SimpleGrid>
                 </Box>
 
@@ -918,6 +935,11 @@ export default function TicketDetail() {
                   </Select>
                 </FormControl>
               </SimpleGrid>
+
+              <FormControl>
+                <FormLabel>标签 <Text as="span" fontSize="xs" color="gray.400" ml={1}>可多选，与分类相互独立</Text></FormLabel>
+                <TagSelect value={editTags} onChange={setEditTags} />
+              </FormControl>
 
               <Card borderRadius="12px" bg="gray.50" border="1px solid" borderColor="gray.200">
                 <CardBody py={3} px={4}>

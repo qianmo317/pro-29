@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTicketStore, type TicketFilters } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
 import { useDepartmentStore } from '@/store/departmentStore'
+import { useTagStore } from '@/store/tagStore'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -36,9 +37,11 @@ import {
   useToast,
   Badge,
 } from '@chakra-ui/react'
-import { Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Upload, Merge } from 'lucide-react'
+import { Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Upload, Merge, Tags } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
+import TagBadge from '@/components/TagBadge/TagBadge'
+import TagManageModal from '@/components/TagManageModal/TagManageModal'
 import { PRIORITY_LABELS, PRIORITY_COLORS, CATEGORY_LABELS, STATUS_LABELS } from '@/types'
 import { type TicketStatus, type TicketPriority, type TicketCategory, type Ticket } from '@/types'
 
@@ -68,8 +71,10 @@ export default function TicketList() {
   const { tickets, mergeTickets, isTicketMerged, getFilteredTickets } = useTicketStore()
   const { users, currentUser } = useUserStore()
   const { departments, getDepartmentName } = useDepartmentStore()
+  const tags = useTagStore((s) => s.tags)
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
+  const { isOpen: isTagOpen, onOpen: onTagOpen, onClose: onTagClose } = useDisclosure()
 
   const [filters, setFilters] = useState<TicketFilters>({})
   const [page, setPage] = useState(1)
@@ -196,6 +201,13 @@ export default function TicketList() {
             </Badge>
           )}
           <Button
+            leftIcon={<Tags size={16} />}
+            variant="outline"
+            onClick={onTagOpen}
+          >
+            标签管理
+          </Button>
+          <Button
             leftIcon={<Merge size={16} />}
             variant="outline"
             colorScheme="purple"
@@ -277,6 +289,17 @@ export default function TicketList() {
             <option key={d.id} value={d.id}>{d.name}</option>
           ))}
         </Select>
+        <Select
+          placeholder="全部标签"
+          value={filters.tagId || ''}
+          onChange={e => updateFilter('tagId', e.target.value || undefined)}
+          borderRadius="12px"
+          w="150px"
+        >
+          {tags.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </Select>
       </HStack>
 
       <Card borderRadius="16px">
@@ -295,6 +318,7 @@ export default function TicketList() {
                   <Th>编号</Th>
                   <Th>标题</Th>
                   <Th>分类</Th>
+                  <Th>标签</Th>
                   <Th
                     cursor="pointer"
                     onClick={() => handleSort('priority')}
@@ -336,7 +360,7 @@ export default function TicketList() {
               <Tbody>
                 {pageTickets.length === 0 ? (
                   <Tr>
-                    <Td colSpan={10} textAlign="center" py={12}>
+                    <Td colSpan={11} textAlign="center" py={12}>
                       <Text color="gray.400" fontSize="md">暂无匹配的工单</Text>
                     </Td>
                   </Tr>
@@ -372,6 +396,22 @@ export default function TicketList() {
                         </Td>
                         <Td maxW="240px" isTruncated>{ticket.title}</Td>
                         <Td>{CATEGORY_LABELS[ticket.category]}</Td>
+                        <Td onClick={(e) => e.stopPropagation()}>
+                          {(ticket.tags ?? []).length > 0 ? (
+                            <HStack spacing={1} flexWrap="wrap" maxW="180px">
+                              {(ticket.tags ?? []).slice(0, 2).map(tid => (
+                                <TagBadge key={tid} tagId={tid} />
+                              ))}
+                              {(ticket.tags ?? []).length > 2 && (
+                                <Text fontSize="xs" color="gray.400">
+                                  +{(ticket.tags ?? []).length - 2}
+                                </Text>
+                              )}
+                            </HStack>
+                          ) : (
+                            <Text fontSize="sm" color="gray.300">—</Text>
+                          )}
+                        </Td>
                         <Td>
                           <HStack spacing={2}>
                             <Box w="8px" h="8px" borderRadius="50%" bg={PRIORITY_COLORS[ticket.priority]} flexShrink={0} />
@@ -476,6 +516,8 @@ export default function TicketList() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <TagManageModal isOpen={isTagOpen} onClose={onTagClose} />
     </VStack>
   )
 }

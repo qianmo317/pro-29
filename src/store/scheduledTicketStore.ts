@@ -16,6 +16,7 @@ interface ScheduledTicketInput {
   creatorId: string
   assigneeId: string | null
   departmentId: string | null
+  tags?: string[]
   scheduledTime: string
 }
 
@@ -27,6 +28,7 @@ interface ScheduledTicketState {
   cancelScheduledTicket: (id: string) => void
   processDueTickets: () => void
   getScheduledTicketById: (id: string) => ScheduledTicket | undefined
+  removeTag: (tagId: string) => void
 }
 
 const STORAGE_KEY = 'scheduled_tickets'
@@ -43,6 +45,7 @@ export const useScheduledTicketStore = create<ScheduledTicketState>((set, get) =
       const normalized = savedTickets.map(s => ({
         ...s,
         departmentId: s.departmentId ?? null,
+        tags: s.tags ?? [],
       }))
       set({ scheduledTickets: normalized })
     }
@@ -61,6 +64,7 @@ export const useScheduledTicketStore = create<ScheduledTicketState>((set, get) =
       createdTicketId: null,
       cancelledAt: null,
       departmentId: data.departmentId ?? null,
+      tags: data.tags ?? [],
     }
     set((state) => {
       const scheduledTickets = [newScheduled, ...state.scheduledTickets]
@@ -103,6 +107,7 @@ export const useScheduledTicketStore = create<ScheduledTicketState>((set, get) =
         creatorId: s.creatorId,
         assigneeId: s.assigneeId,
         departmentId: s.departmentId,
+        tags: s.tags,
         knowledgeId: null,
       })
       return { id: s.id, createdTicketId: newTicket.id }
@@ -126,4 +131,16 @@ export const useScheduledTicketStore = create<ScheduledTicketState>((set, get) =
   },
 
   getScheduledTicketById: (id) => get().scheduledTickets.find((s) => s.id === id),
+
+  removeTag: (tagId) => {
+    set((state) => {
+      const scheduledTickets = state.scheduledTickets.map((s) =>
+        (s.tags ?? []).includes(tagId)
+          ? { ...s, tags: (s.tags ?? []).filter((id) => id !== tagId) }
+          : s
+      )
+      saveToStorage(STORAGE_KEY, scheduledTickets)
+      return { scheduledTickets }
+    })
+  },
 }))

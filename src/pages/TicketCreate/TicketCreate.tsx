@@ -29,6 +29,7 @@ import {
   Stack,
 } from '@chakra-ui/react'
 import { ArrowLeft, Send, BookOpen, FileText, ChevronDown, CalendarClock } from 'lucide-react'
+import TagSelect from '@/components/TagSelect/TagSelect'
 import { useTicketStore } from '@/store/ticketStore'
 import { useScheduledTicketStore } from '@/store/scheduledTicketStore'
 import { useUserStore } from '@/store/userStore'
@@ -53,6 +54,7 @@ export default function TicketCreate() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState<TicketCategory>('software')
+  const [tagIds, setTagIds] = useState<string[]>([])
   const [priority, setPriority] = useState<TicketPriority>('medium')
   const [departmentId, setDepartmentId] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
@@ -152,6 +154,7 @@ export default function TicketCreate() {
         creatorId: currentUser.id,
         assigneeId: assigneeId || null,
         departmentId: departmentId || null,
+        tags: tagIds,
         scheduledTime: new Date(scheduledTime).toISOString(),
       })
 
@@ -175,6 +178,7 @@ export default function TicketCreate() {
       creatorId: currentUser.id,
       assigneeId: assigneeId || null,
       departmentId: departmentId || null,
+      tags: tagIds,
       knowledgeId: null,
     })
 
@@ -316,6 +320,11 @@ export default function TicketCreate() {
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </Select>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>标签 <Text as="span" fontSize="xs" color="gray.400" fontWeight="normal">可多选，与分类相互独立</Text></FormLabel>
+                <TagSelect value={tagIds} onChange={setTagIds} />
               </FormControl>
 
               <FormControl>

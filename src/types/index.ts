@@ -10,6 +10,23 @@ export interface Department {
   color: string
 }
 
+export interface Tag {
+  id: string
+  name: string
+  color: string
+}
+
+export const TAG_COLORS: string[] = [
+  '#6C5CE7',
+  '#00B894',
+  '#0984E3',
+  '#E17055',
+  '#00CEC9',
+  '#FDCB6E',
+  '#E84393',
+  '#A29BFE',
+]
+
 export interface User {
   id: string
   name: string
@@ -25,6 +42,7 @@ export interface Ticket {
   title: string
   description: string
   category: TicketCategory
+  tags: string[]
   priority: TicketPriority
   status: TicketStatus
   creatorId: string
@@ -203,6 +221,7 @@ export interface ScheduledTicket {
   title: string
   description: string
   category: TicketCategory
+  tags: string[]
   priority: TicketPriority
   creatorId: string
   assigneeId: string | null
