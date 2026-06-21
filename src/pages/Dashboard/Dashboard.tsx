@@ -1,10 +1,12 @@
-import { Box, SimpleGrid, Card, CardBody, Heading, Text, HStack, VStack, Button, Icon } from '@chakra-ui/react'
-import { Ticket, Clock, Loader, CheckCircle, Plus, List, AlertTriangle } from 'lucide-react'
+import { Box, SimpleGrid, Card, CardBody, Heading, Text, HStack, VStack, Button, Icon, Badge, Tag } from '@chakra-ui/react'
+import { Ticket, Clock, Loader, CheckCircle, Plus, List, AlertTriangle, UserCheck, Inbox } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useTicketStore } from '@/store/ticketStore'
+import { useUserStore } from '@/store/userStore'
 import { getSLARemaining } from '@/utils/slaUtils'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
+import { PRIORITY_LABELS, PRIORITY_COLORS } from '@/types'
 
 const STATS_CONFIG = [
   {
@@ -41,9 +43,28 @@ function formatTimeAgo(dateStr: string): string {
   return `${Math.floor(days / 30)}个月前`
 }
 
+const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 }
+
+function PriorityBadge({ priority }: { priority: 'critical' | 'high' | 'medium' | 'low' }) {
+  return (
+    <Badge
+      fontSize="xs"
+      px={2}
+      py={0.5}
+      borderRadius="6px"
+      color="white"
+      bg={PRIORITY_COLORS[priority]}
+      fontWeight="600"
+    >
+      {PRIORITY_LABELS[priority]}
+    </Badge>
+  )
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const { tickets, getStats } = useTicketStore()
+  const { currentUser } = useUserStore()
 
   const stats = getStats()
   const statValues = [stats.totalCount, stats.pendingCount, stats.inProgressCount, stats.closedCount]
@@ -59,6 +80,24 @@ export default function Dashboard() {
   const recentTickets = [...tickets]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .slice(0, 5)
+
+  const isAdmin = currentUser?.role === 'admin'
+
+  const myPendingTickets = tickets
+    .filter(t => {
+      if (t.status === 'closed' || t.status === 'rejected' || t.status === 'merged') return false
+      if (isAdmin) {
+        return t.assigneeId === currentUser?.id
+      }
+      return t.assigneeId === currentUser?.id
+    })
+    .sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
+    .slice(0, 8)
+
+  const unassignedTickets = tickets
+    .filter(t => t.status === 'pending' && !t.assigneeId)
+    .sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
+    .slice(0, 8)
 
   return (
     <Box p={6}>
@@ -178,6 +217,142 @@ export default function Dashboard() {
             </VStack>
           </CardBody>
         </Card>
+      </SimpleGrid>
+
+      <SimpleGrid columns={{ base: 1, lg: isAdmin ? 2 : 1 }} spacing={5} mb={6}>
+        <Card>
+          <CardBody>
+            <HStack mb={4} justify="space-between">
+              <HStack>
+                <Icon as={UserCheck} color="#0984E3" boxSize={5} />
+                <Heading size="sm">待我处理</Heading>
+                {myPendingTickets.length > 0 && (
+                  <Badge colorScheme="blue" borderRadius="full" px={2}>
+                    {myPendingTickets.length}
+                  </Badge>
+                )}
+              </HStack>
+              <Button
+                size="xs"
+                variant="ghost"
+                colorScheme="brand"
+                onClick={() => navigate('/tickets?filter=mine')}
+              >
+                查看全部
+              </Button>
+            </HStack>
+            {myPendingTickets.length === 0 ? (
+              <Text color="gray.400" fontSize="sm" py={8} textAlign="center">
+                暂无待处理工单
+              </Text>
+            ) : (
+              <VStack align="stretch" spacing={3}>
+                {myPendingTickets.map(ticket => (
+                  <HStack
+                    key={ticket.id}
+                    p={3}
+                    bg="gray.50"
+                    borderRadius="12px"
+                    cursor="pointer"
+                    _hover={{ bg: 'gray.100', transform: 'translateX(2px)' }}
+                    transition="all 0.15s ease"
+                    onClick={() => navigate(`/tickets/${ticket.id}`)}
+                    justify="space-between"
+                    align="flex-start"
+                  >
+                    <Box flex={1} minW={0}>
+                      <HStack spacing={2} mb={1.5} align="center">
+                        <PriorityBadge priority={ticket.priority} />
+                        <Text fontSize="sm" fontWeight="600" color="brand.500">
+                          {ticket.id}
+                        </Text>
+                      </HStack>
+                      <Text fontSize="sm" noOfLines={1} fontWeight="500" mb={1.5}>
+                        {ticket.title}
+                      </Text>
+                      <HStack spacing={2}>
+                        <StatusBadge status={ticket.status} size="sm" />
+                        <Text fontSize="xs" color="gray.400">
+                          创建于 {formatTimeAgo(ticket.createdAt)}
+                        </Text>
+                      </HStack>
+                    </Box>
+                    <SLAIndicator slaDeadline={ticket.slaDeadline} size="sm" />
+                  </HStack>
+                ))}
+              </VStack>
+            )}
+          </CardBody>
+        </Card>
+
+        {isAdmin && (
+          <Card borderLeft="4px solid" borderLeftColor="#A29BFE">
+            <CardBody>
+              <HStack mb={4} justify="space-between">
+                <HStack>
+                  <Icon as={Inbox} color="#A29BFE" boxSize={5} />
+                  <Heading size="sm">待分配工单</Heading>
+                  {unassignedTickets.length > 0 && (
+                    <Badge colorScheme="purple" borderRadius="full" px={2}>
+                      {unassignedTickets.length}
+                    </Badge>
+                  )}
+                </HStack>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  colorScheme="purple"
+                  onClick={() => navigate('/tickets?filter=unassigned')}
+                >
+                  查看全部
+                </Button>
+              </HStack>
+              {unassignedTickets.length === 0 ? (
+                <Text color="gray.400" fontSize="sm" py={8} textAlign="center">
+                  暂无待分配工单
+                </Text>
+              ) : (
+                <VStack align="stretch" spacing={3}>
+                  {unassignedTickets.map(ticket => (
+                    <HStack
+                      key={ticket.id}
+                      p={3}
+                      bg="gray.50"
+                      borderRadius="12px"
+                      cursor="pointer"
+                      _hover={{ bg: 'gray.100', transform: 'translateX(2px)' }}
+                      transition="all 0.15s ease"
+                      onClick={() => navigate(`/tickets/${ticket.id}`)}
+                      justify="space-between"
+                      align="flex-start"
+                    >
+                      <Box flex={1} minW={0}>
+                        <HStack spacing={2} mb={1.5} align="center">
+                          <PriorityBadge priority={ticket.priority} />
+                          <Text fontSize="sm" fontWeight="600" color="brand.500">
+                            {ticket.id}
+                          </Text>
+                        </HStack>
+                        <Text fontSize="sm" noOfLines={1} fontWeight="500" mb={1.5}>
+                          {ticket.title}
+                        </Text>
+                        <HStack spacing={2}>
+                          <Tag size="sm" colorScheme="purple" variant="outline" borderRadius="6px">
+                            待分配
+                          </Tag>
+                          <Text fontSize="xs" color="gray.400">
+                            创建于 {formatTimeAgo(ticket.createdAt)}
+                          </Text>
+                        </HStack>
+                      </Box>
+                      <SLAIndicator slaDeadline={ticket.slaDeadline} size="sm" />
+                    </HStack>
+                  ))}
+                </VStack>
+              )}
+            </CardBody>
+          </Card>
+        )}
       </SimpleGrid>
 
       <HStack spacing={4}>
