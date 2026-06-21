@@ -1,29 +1,93 @@
-import { Box, Card, CardBody, Heading, Text, SimpleGrid, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td, Icon, Progress, Tabs, TabList, Tab, TabPanels, TabPanel, Button, Spacer, Flex, useToast } from '@chakra-ui/react'
-import { TrendingUp, PieChart as PieChartIcon, Users, Clock, Star, Building2, Download, FileImage } from 'lucide-react'
+import { Box, Card, CardBody, Heading, Text, SimpleGrid, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td, Icon, Progress, Tabs, TabList, Tab, TabPanels, TabPanel, Button, Spacer, Flex, useToast, Select, Input, Popover, PopoverTrigger, PopoverContent, PopoverBody, useDisclosure } from '@chakra-ui/react'
+import { TrendingUp, PieChart as PieChartIcon, Users, Clock, Star, Building2, Download, FileImage, Calendar } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, LabelList } from 'recharts'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
 import { useDepartmentStore } from '@/store/departmentStore'
-import type { TicketCategory, TicketRecord } from '@/types'
+import type { TicketCategory, TicketRecord, Ticket, TicketEvaluation } from '@/types'
 import { CATEGORY_LABELS, MAX_RATING } from '@/types'
 import { exportReportsToExcel, captureChartScreenshots, type ChartScreenshotResult } from '@/utils/exportUtils'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+
+type TimeRangeType = '7days' | '30days' | 'thisMonth' | 'thisQuarter' | 'custom'
+
+interface DateRange {
+  start: Date
+  end: Date
+}
+
+const TIME_RANGE_OPTIONS = [
+  { value: '7days', label: '近7天' },
+  { value: '30days', label: '近30天' },
+  { value: 'thisMonth', label: '本月' },
+  { value: 'thisQuarter', label: '本季度' },
+  { value: 'custom', label: '自定义' },
+]
+
+function getDateRange(rangeType: TimeRangeType, customStart?: string, customEnd?: string): DateRange {
+  const now = new Date()
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+
+  switch (rangeType) {
+    case '7days': {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 6)
+      start.setHours(0, 0, 0, 0)
+      return { start, end }
+    }
+    case '30days': {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 29)
+      start.setHours(0, 0, 0, 0)
+      return { start, end }
+    }
+    case 'thisMonth': {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { start, end }
+    }
+    case 'thisQuarter': {
+      const quarter = Math.floor(now.getMonth() / 3)
+      const start = new Date(now.getFullYear(), quarter * 3, 1)
+      return { start, end }
+    }
+    case 'custom': {
+      const start = customStart ? new Date(customStart) : new Date(now)
+      start.setHours(0, 0, 0, 0)
+      const customEndDate = customEnd ? new Date(customEnd) : new Date(now)
+      const endDate = new Date(customEndDate)
+      endDate.setDate(endDate.getDate() + 1)
+      endDate.setHours(0, 0, 0, 0)
+      return { start, end: endDate }
+    }
+    default:
+      return { start: new Date(0), end }
+  }
+}
+
+function formatDateInput(d: Date): string {
+  const yyyy = d.getFullYear()
+  const MM = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${MM}-${dd}`
+}
 
 const OVERVIEW_CONFIG = [
-  { label: '本月新增工单', icon: TrendingUp, gradient: 'linear-gradient(135deg, #6C5CE7, #A29BFE)' },
-  { label: '本月关闭工单', icon: Clock, gradient: 'linear-gradient(135deg, #00B894, #55EFC4)' },
+  { label: '新增工单', icon: TrendingUp, gradient: 'linear-gradient(135deg, #6C5CE7, #A29BFE)' },
+  { label: '关闭工单', icon: Clock, gradient: 'linear-gradient(135deg, #00B894, #55EFC4)' },
   { label: '平均处理时长', icon: TrendingUp, gradient: 'linear-gradient(135deg, #0984E3, #74B9FF)' },
   { label: 'SLA 达标率', icon: PieChartIcon, gradient: 'linear-gradient(135deg, #4839C5, #6C5CE7)' },
 ]
 
 const PIE_COLORS = ['#6C5CE7', '#00B894', '#FF7675', '#FDCB6E', '#74B9FF', '#A29BFE']
 
-function getLast7DaysData(tickets: { createdAt: string; status: string; updatedAt: string }[]) {
+function getTrendData(tickets: { createdAt: string; status: string; updatedAt: string }[], dateRange: DateRange) {
   const days: { date: string; created: number; closed: number }[] = []
-  const now = new Date()
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now)
-    d.setDate(d.getDate() - i)
+  const { start, end } = dateRange
+  const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+
+  for (let i = 0; i < totalDays; i++) {
+    const d = new Date(start)
+    d.setDate(d.getDate() + i)
     const dateStr = `${d.getMonth() + 1}/${d.getDate()}`
     const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
     const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
@@ -39,6 +103,158 @@ function getLast7DaysData(tickets: { createdAt: string; status: string; updatedA
     days.push({ date: dateStr, created, closed })
   }
   return days
+}
+
+function filterTicketsByDateRange(tickets: Ticket[], dateRange: DateRange): Ticket[] {
+  const { start, end } = dateRange
+  return tickets.filter(t => {
+    const createdAt = new Date(t.createdAt)
+    return createdAt >= start && createdAt < end
+  })
+}
+
+function filterRecordsByDateRange(records: TicketRecord[], dateRange: DateRange): TicketRecord[] {
+  const { start, end } = dateRange
+  return records.filter(r => {
+    const createdAt = new Date(r.createdAt)
+    return createdAt >= start && createdAt < end
+  })
+}
+
+function filterEvaluationsByDateRange(evaluations: TicketEvaluation[], dateRange: DateRange): TicketEvaluation[] {
+  const { start, end } = dateRange
+  return evaluations.filter(e => {
+    const createdAt = new Date(e.createdAt)
+    return createdAt >= start && createdAt < end
+  })
+}
+
+function calculateStats(filteredTickets: Ticket[]): {
+  createdCount: number
+  closedCount: number
+  avgResolutionTime: string
+  slaComplianceRate: string
+} {
+  const createdCount = filteredTickets.length
+  const closed = filteredTickets.filter(t => t.status === 'closed' || t.status === 'rejected')
+  const closedCount = closed.length
+
+  let avgResolutionTime = '-'
+  if (closed.length > 0) {
+    const totalHours = closed.reduce((sum, t) => {
+      const hours = (new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime()) / 3600000
+      return sum + Math.max(0, hours)
+    }, 0)
+    const avg = totalHours / closed.length
+    avgResolutionTime = formatDuration(avg)
+  }
+
+  let slaComplianceRate = '-'
+  if (closed.length > 0) {
+    const onTime = closed.filter(t => new Date(t.updatedAt) <= new Date(t.slaDeadline))
+    slaComplianceRate = `${Math.round((onTime.length / closed.length) * 100)}%`
+  }
+
+  return { createdCount, closedCount, avgResolutionTime, slaComplianceRate }
+}
+
+function calculateDepartmentStats(
+  departments: { id: string; name: string }[],
+  filteredTickets: Ticket[],
+  allRecords: TicketRecord[]
+): Array<{
+  departmentId: string
+  departmentName: string
+  totalCount: number
+  pendingCount: number
+  inProgressCount: number
+  closedCount: number
+  avgResolutionTime: string
+  slaComplianceRate: string
+  avgResponseTime: string
+}> {
+  return departments.map(dept => {
+    const deptTickets = filteredTickets.filter(t => t.departmentId === dept.id)
+    const totalCount = deptTickets.length
+    const pendingCount = deptTickets.filter(t => t.status === 'pending' || t.status === 'assigned').length
+    const inProgressCount = deptTickets.filter(t => t.status === 'in_progress').length
+    const closedCount = deptTickets.filter(t => t.status === 'closed').length
+
+    const resolved = deptTickets.filter(t => t.status === 'closed' || t.status === 'rejected')
+    let avgResolutionTime = '-'
+    if (resolved.length > 0) {
+      const totalHours = resolved.reduce((sum, t) => {
+        const hours = (new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime()) / 3600000
+        return sum + Math.max(0, hours)
+      }, 0)
+      const avg = totalHours / resolved.length
+      avgResolutionTime = formatDuration(avg)
+    }
+
+    let slaComplianceRate = '-'
+    if (resolved.length > 0) {
+      const onTime = resolved.filter(t => new Date(t.updatedAt) <= new Date(t.slaDeadline))
+      slaComplianceRate = `${Math.round((onTime.length / resolved.length) * 100)}%`
+    }
+
+    let totalResponseHours = 0
+    let responseCount = 0
+    const deptTicketIds = new Set(deptTickets.map(t => t.id))
+    const deptRecords = allRecords.filter(r => deptTicketIds.has(r.ticketId))
+    deptTickets.forEach(ticket => {
+      const ticketRecords = deptRecords.filter(r => r.ticketId === ticket.id)
+      const assignRecord = ticketRecords.find(r => r.action === 'assigned' || r.action === 'department_assigned')
+      const startRecord = ticketRecords.find(r => r.action === 'status_changed' && r.content.includes('开始处理'))
+      if (assignRecord && startRecord) {
+        const hours = (new Date(startRecord.createdAt).getTime() - new Date(assignRecord.createdAt).getTime()) / 3600000
+        if (hours >= 0) {
+          totalResponseHours += hours
+          responseCount++
+        }
+      }
+    })
+    let avgResponseTime = '-'
+    if (responseCount > 0) {
+      const avg = totalResponseHours / responseCount
+      avgResponseTime = formatDuration(avg)
+    }
+
+    return {
+      departmentId: dept.id,
+      departmentName: dept.name,
+      totalCount,
+      pendingCount,
+      inProgressCount,
+      closedCount,
+      avgResolutionTime,
+      slaComplianceRate,
+      avgResponseTime,
+    }
+  })
+}
+
+function calculateEvaluationStats(filteredEvaluations: TicketEvaluation[]): Array<{
+  agentId: string
+  averageRating: number
+  count: number
+  distribution: Record<number, number>
+}> {
+  const statsMap: Record<string, { totalRating: number; count: number; distribution: Record<number, number> }> = {}
+  filteredEvaluations.forEach(e => {
+    if (!statsMap[e.assigneeId]) {
+      statsMap[e.assigneeId] = { totalRating: 0, count: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }
+    }
+    const s = statsMap[e.assigneeId]
+    s.totalRating += e.rating
+    s.count += 1
+    s.distribution[e.rating] = (s.distribution[e.rating] || 0) + 1
+  })
+  return Object.entries(statsMap).map(([agentId, s]) => ({
+    agentId,
+    averageRating: s.count > 0 ? s.totalRating / s.count : 0,
+    count: s.count,
+    distribution: s.distribution,
+  }))
 }
 
 function getCategoryData(tickets: { category: TicketCategory }[]) {
@@ -135,25 +351,67 @@ function renderCustomizedLabel({ cx, cy, midAngle, innerRadius, outerRadius, nam
 }
 
 export default function Reports() {
-  const { tickets, records, evaluations, getStats, getEvaluationStats, getDepartmentStats } = useTicketStore()
+  const { tickets, records, evaluations } = useTicketStore()
   const { users } = useUserStore()
   const { departments } = useDepartmentStore()
   const toast = useToast()
   const [exporting, setExporting] = useState(false)
+  const [timeRange, setTimeRange] = useState<TimeRangeType>('thisMonth')
+  const [customStart, setCustomStart] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 29)
+    return formatDateInput(d)
+  })
+  const [customEnd, setCustomEnd] = useState(() => formatDateInput(new Date()))
 
-  const stats = getStats()
-  const overviewStats = [stats.thisMonthCreated, stats.thisMonthClosed, stats.avgResolutionTime, stats.slaComplianceRate]
+  const dateRange = useMemo(
+    () => getDateRange(timeRange, customStart, customEnd),
+    [timeRange, customStart, customEnd]
+  )
+
+  const filteredTickets = useMemo(
+    () => filterTicketsByDateRange(tickets, dateRange),
+    [tickets, dateRange]
+  )
+
+  const filteredEvaluations = useMemo(
+    () => filterEvaluationsByDateRange(evaluations, dateRange),
+    [evaluations, dateRange]
+  )
+
+  const stats = useMemo(
+    () => calculateStats(filteredTickets),
+    [filteredTickets]
+  )
+
+  const overviewStats = [stats.createdCount, stats.closedCount, stats.avgResolutionTime, stats.slaComplianceRate]
   const overview = OVERVIEW_CONFIG.map((config, index) => ({
     label: config.label,
     value: overviewStats[index],
   }))
 
-  const trendData = getLast7DaysData(tickets)
-  const categoryData = getCategoryData(tickets)
+  const trendData = useMemo(
+    () => getTrendData(filteredTickets, dateRange),
+    [filteredTickets, dateRange]
+  )
+
+  const categoryData = useMemo(
+    () => getCategoryData(filteredTickets),
+    [filteredTickets]
+  )
 
   const agents = users.filter(u => u.role === 'agent')
-  const performanceData = getAgentPerformance(tickets, records, agents)
-  const departmentStats = getDepartmentStats(departments, records)
+
+  const performanceData = useMemo(
+    () => getAgentPerformance(filteredTickets, records, agents),
+    [filteredTickets, records, agents]
+  )
+
+  const departmentStats = useMemo(
+    () => calculateDepartmentStats(departments, filteredTickets, records),
+    [departments, filteredTickets, records]
+  )
+
   const deptTicketChartData = departmentStats.map(d => ({
     name: d.departmentName,
     总工单: d.totalCount,
@@ -163,14 +421,18 @@ export default function Reports() {
   }))
   const departmentPieData = departmentStats.filter(d => d.totalCount > 0).map(d => ({ name: d.departmentName, value: d.totalCount }))
 
-  const evaluationStats = getEvaluationStats()
+  const evaluationStats = useMemo(
+    () => calculateEvaluationStats(filteredEvaluations),
+    [filteredEvaluations]
+  )
+
   const evalStatMap = new Map(evaluationStats.map(s => [s.agentId, s]))
   const evalByName = new Map(
     agents.map(agent => [agent.name, evalStatMap.get(agent.id)])
   )
-  const totalEvaluations = evaluations.length
+  const totalEvaluations = filteredEvaluations.length
   const overallAvgRating = totalEvaluations > 0
-    ? evaluations.reduce((sum, e) => sum + e.rating, 0) / totalEvaluations
+    ? filteredEvaluations.reduce((sum, e) => sum + e.rating, 0) / totalEvaluations
     : 0
   const ratingBreakdown = agents
     .map(agent => {
@@ -261,10 +523,45 @@ export default function Reports() {
 
   return (
     <Box p={6}>
-      <Flex align="center" mb={6}>
+      <Flex align="center" mb={6} wrap="wrap" gap={3}>
         <Heading size="lg">
           报表统计
         </Heading>
+        <HStack spacing={2} ml={4}>
+          <Icon as={Calendar} color="brand.500" size={18} />
+          <Select
+            value={timeRange}
+            onChange={(e) => setTimeRange(e.target.value as TimeRangeType)}
+            size="md"
+            w="140px"
+            borderRadius="8px"
+          >
+            {TIME_RANGE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </Select>
+          {timeRange === 'custom' && (
+            <HStack spacing={2}>
+              <Input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                size="md"
+                w="140px"
+                borderRadius="8px"
+              />
+              <Text color="gray.500">至</Text>
+              <Input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                size="md"
+                w="140px"
+                borderRadius="8px"
+              />
+            </HStack>
+          )}
+        </HStack>
         <Spacer />
         <HStack spacing={3}>
           <Button
