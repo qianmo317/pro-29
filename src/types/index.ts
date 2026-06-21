@@ -244,3 +244,36 @@ export const SCHEDULED_STATUS_COLORS: Record<ScheduledTicketStatus, string> = {
   created: '#00B894',
   cancelled: '#718096',
 }
+
+export type AnnouncementLevel = 'info' | 'warning' | 'critical'
+
+export interface Announcement {
+  id: string
+  title: string
+  content: string
+  level: AnnouncementLevel
+  creatorId: string
+  createdAt: string
+  effectiveFrom: string
+  effectiveTo: string
+  isActive: boolean
+}
+
+export interface AnnouncementReadRecord {
+  id: string
+  announcementId: string
+  userId: string
+  readAt: string
+}
+
+export const ANNOUNCEMENT_LEVEL_LABELS: Record<AnnouncementLevel, string> = {
+  info: '通知',
+  warning: '提醒',
+  critical: '重要',
+}
+
+export const ANNOUNCEMENT_LEVEL_COLORS: Record<AnnouncementLevel, string> = {
+  info: '#3182CE',
+  warning: '#D69E2E',
+  critical: '#E53E3E',
+}

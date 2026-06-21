@@ -10,6 +10,7 @@ import TicketCreate from '@/pages/TicketCreate/TicketCreate'
 import TicketImport from '@/pages/TicketImport/TicketImport'
 import ScheduledTickets from '@/pages/ScheduledTickets/ScheduledTickets'
 import TemplateManage from '@/pages/TemplateManage/TemplateManage'
+import AnnouncementManage from '@/pages/AnnouncementManage/AnnouncementManage'
 import KnowledgeList from '@/pages/Knowledge/KnowledgeList'
 import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail'
 import KnowledgeEdit from '@/pages/Knowledge/KnowledgeEdit'
@@ -22,6 +23,7 @@ import { useScheduledTicketStore } from '@/store/scheduledTicketStore'
 import { useDepartmentStore } from '@/store/departmentStore'
 import { useKnowledgeStore } from '@/store/knowledgeStore'
 import { useTagStore } from '@/store/tagStore'
+import { useAnnouncementStore } from '@/store/announcementStore'
 
 export default function App() {
   const initAuth = useUserStore((s) => s.initAuth)
@@ -33,6 +35,7 @@ export default function App() {
   const initDepartments = useDepartmentStore((s) => s.initialize)
   const initKnowledge = useKnowledgeStore((s) => s.initialize)
   const initTags = useTagStore((s) => s.initialize)
+  const initAnnouncements = useAnnouncementStore((s) => s.initialize)
   const processDueTickets = useScheduledTicketStore((s) => s.processDueTickets)
 
   useEffect(() => {
@@ -45,12 +48,13 @@ export default function App() {
     initDepartments()
     initKnowledge()
     initTags()
+    initAnnouncements()
     processDueTickets()
     const interval = setInterval(() => {
       processDueTickets()
     }, 30000)
     return () => clearInterval(interval)
-  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, initTags, processDueTickets])
+  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, initTags, initAnnouncements, processDueTickets])
 
   return (
     <Router>
@@ -71,6 +75,7 @@ export default function App() {
           <Route path="tickets/import" element={<TicketImport />} />
           <Route path="tickets/:id" element={<TicketDetail />} />
           <Route path="scheduled-tickets" element={<ScheduledTickets />} />
+          <Route path="announcements" element={<AnnouncementManage />} />
           <Route path="templates" element={<TemplateManage />} />
           <Route path="knowledge" element={<KnowledgeList />} />
           <Route path="knowledge/create" element={<KnowledgeEdit />} />

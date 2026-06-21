@@ -18,8 +18,9 @@ import {
   Tag,
 } from '@chakra-ui/react'
 import { ChevronRightIcon } from '@chakra-ui/icons'
-import { LogOut, User, Shield, UserCog, Bell } from 'lucide-react'
+import { LogOut, User, Shield, Bell } from 'lucide-react'
 import Sidebar from './Sidebar'
+import AnnouncementBar from '@/components/AnnouncementBar/AnnouncementBar'
 import { useUserStore } from '@/store/userStore'
 import { useNotificationStore } from '@/store/notificationStore'
 import NotificationPanel from '@/components/NotificationPanel/NotificationPanel'
@@ -204,6 +205,8 @@ export default function AppLayout() {
           </Menu>
           </HStack>
         </Box>
+
+        <AnnouncementBar />
 
         <Box flex={1} overflow="auto" p={6} bg="#F7F8FC">
           <Outlet />
