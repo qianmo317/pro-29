@@ -1,9 +1,9 @@
 import type { TicketPriority } from '@/types'
 import type { SLAConfig } from '@/types'
-import { MOCK_SLA_CONFIGS } from './mockData'
+import { useSLAStore } from '@/store/slaStore'
 
 export function getSLADeadline(priority: TicketPriority, createdAt: string): string {
-  const config = MOCK_SLA_CONFIGS.find(c => c.priority === priority)
+  const config = useSLAStore.getState().getConfigByPriority(priority)
   const hours = config ? config.resolutionHours : 24
   return new Date(new Date(createdAt).getTime() + hours * 3600000).toISOString()
 }
@@ -40,5 +40,5 @@ export function getSLAColor(remaining: ReturnType<typeof getSLARemaining>): stri
 }
 
 export function getSLAConfig(priority: TicketPriority): SLAConfig | undefined {
-  return MOCK_SLA_CONFIGS.find(c => c.priority === priority)
+  return useSLAStore.getState().getConfigByPriority(priority)
 }

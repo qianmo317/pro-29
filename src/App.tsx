@@ -15,6 +15,7 @@ import KnowledgeList from '@/pages/Knowledge/KnowledgeList'
 import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail'
 import KnowledgeEdit from '@/pages/Knowledge/KnowledgeEdit'
 import Reports from '@/pages/Reports/Reports'
+import SLAManage from '@/pages/SLAManage/SLAManage'
 import { useUserStore } from '@/store/userStore'
 import { useTicketStore } from '@/store/ticketStore'
 import { useTemplateStore } from '@/store/templateStore'
@@ -24,6 +25,7 @@ import { useDepartmentStore } from '@/store/departmentStore'
 import { useKnowledgeStore } from '@/store/knowledgeStore'
 import { useTagStore } from '@/store/tagStore'
 import { useAnnouncementStore } from '@/store/announcementStore'
+import { useSLAStore } from '@/store/slaStore'
 
 export default function App() {
   const initAuth = useUserStore((s) => s.initAuth)
@@ -36,6 +38,7 @@ export default function App() {
   const initKnowledge = useKnowledgeStore((s) => s.initialize)
   const initTags = useTagStore((s) => s.initialize)
   const initAnnouncements = useAnnouncementStore((s) => s.initialize)
+  const initSLA = useSLAStore((s) => s.initialize)
   const processDueTickets = useScheduledTicketStore((s) => s.processDueTickets)
 
   useEffect(() => {
@@ -49,12 +52,13 @@ export default function App() {
     initKnowledge()
     initTags()
     initAnnouncements()
+    initSLA()
     processDueTickets()
     const interval = setInterval(() => {
       processDueTickets()
     }, 30000)
     return () => clearInterval(interval)
-  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, initTags, initAnnouncements, processDueTickets])
+  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, initTags, initAnnouncements, initSLA, processDueTickets])
 
   return (
     <Router>
@@ -82,6 +86,7 @@ export default function App() {
           <Route path="knowledge/:id" element={<KnowledgeDetail />} />
           <Route path="knowledge/:id/edit" element={<KnowledgeEdit />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="sla" element={<SLAManage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
