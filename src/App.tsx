@@ -40,6 +40,7 @@ export default function App() {
   const initAnnouncements = useAnnouncementStore((s) => s.initialize)
   const initSLA = useSLAStore((s) => s.initialize)
   const processDueTickets = useScheduledTicketStore((s) => s.processDueTickets)
+  const renewSession = useUserStore((s) => s.renewSession)
 
   useEffect(() => {
     initAuth()
@@ -59,6 +60,19 @@ export default function App() {
     }, 30000)
     return () => clearInterval(interval)
   }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, initTags, initAnnouncements, initSLA, processDueTickets])
+
+  useEffect(() => {
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
+    const handleActivity = () => renewSession()
+    activityEvents.forEach((event) =>
+      window.addEventListener(event, handleActivity, { passive: true })
+    )
+    return () => {
+      activityEvents.forEach((event) =>
+        window.removeEventListener(event, handleActivity)
+      )
+    }
+  }, [renewSession])
 
   return (
     <Router>

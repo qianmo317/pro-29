@@ -17,6 +17,7 @@ import {
   Tag,
   Divider,
   SimpleGrid,
+  Checkbox,
 } from '@chakra-ui/react'
 import { Ticket, Mail, Lock, LogIn, Shield, UserCog, User } from 'lucide-react'
 import { useNavigate, useLocation, Navigate } from 'react-router-dom'
@@ -35,6 +36,7 @@ export default function Login() {
 
   const [email, setEmail] = useState('admin@company.com')
   const [password, setPassword] = useState('admin123')
+  const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -49,7 +51,7 @@ export default function Login() {
     setLoading(true)
 
     setTimeout(() => {
-      const result = login(email.trim(), password)
+      const result = login(email.trim(), password, rememberMe)
       setLoading(false)
       if (result.success) {
         const from = (location.state as any)?.from?.pathname || '/dashboard'
@@ -195,6 +197,16 @@ export default function Login() {
                       size="md"
                     />
                   </FormControl>
+
+                  <Checkbox
+                    isChecked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    colorScheme="purple"
+                    size="sm"
+                    spacing={2}
+                  >
+                    <Text fontSize="sm" color="gray.600">记住我（7天内免登录）</Text>
+                  </Checkbox>
 
                   <Button
                     type="submit"
