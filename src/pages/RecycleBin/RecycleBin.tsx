@@ -63,7 +63,7 @@ function formatDateTime(iso: string): string {
 }
 
 export default function RecycleBin() {
-  const { getDeletedTickets, restoreTicket, permanentlyDeleteTicket, getDaysUntilExpiration } = useTicketStore()
+  const { tickets, getDeletedTickets, restoreTicket, permanentlyDeleteTicket, getDaysUntilExpiration } = useTicketStore()
   const { users, currentUser } = useUserStore()
   const toast = useToast()
   const { isOpen: isRestoreOpen, onOpen: onRestoreOpen, onClose: onRestoreClose } = useDisclosure()
@@ -83,7 +83,7 @@ export default function RecycleBin() {
 
   const deletedTickets = useMemo(() => {
     return getDeletedTickets()
-  }, [getDeletedTickets])
+  }, [tickets, getDeletedTickets])
 
   const filteredTickets = useMemo(() => {
     let result = [...deletedTickets]

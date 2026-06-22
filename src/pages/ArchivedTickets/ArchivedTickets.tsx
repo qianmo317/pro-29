@@ -70,7 +70,7 @@ function formatDateTime(iso: string): string {
 }
 
 export default function ArchivedTickets() {
-  const { getArchivedTickets, unarchiveTicket, getTicketsEligibleForArchive, batchArchiveTickets, archiveTicket } = useTicketStore()
+  const { tickets, getArchivedTickets, unarchiveTicket, getTicketsEligibleForArchive, batchArchiveTickets, archiveTicket } = useTicketStore()
   const { users, currentUser } = useUserStore()
   const toast = useToast()
   const { isOpen: isUnarchiveOpen, onOpen: onUnarchiveOpen, onClose: onUnarchiveClose } = useDisclosure()
@@ -92,11 +92,11 @@ export default function ArchivedTickets() {
 
   const archivedTickets = useMemo(() => {
     return getArchivedTickets()
-  }, [getArchivedTickets])
+  }, [tickets, getArchivedTickets])
 
   const eligibleForArchive = useMemo(() => {
     return getTicketsEligibleForArchive()
-  }, [getTicketsEligibleForArchive])
+  }, [tickets, getTicketsEligibleForArchive])
 
   const filteredTickets = useMemo(() => {
     let result = [...archivedTickets]
