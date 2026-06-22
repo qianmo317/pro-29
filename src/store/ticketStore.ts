@@ -14,7 +14,7 @@ import type {
 } from '@/types'
 import { CATEGORY_LABELS, PRIORITY_LABELS } from '@/types'
 import { MOCK_TICKETS, MOCK_RECORDS, MOCK_EVALUATIONS } from '@/utils/mockData'
-import { getSLADeadline } from '@/utils/slaUtils'
+import { getSLADeadline, getSLARemaining } from '@/utils/slaUtils'
 import { saveToStorage, loadFromStorage } from '@/utils/storage'
 import { useNotificationStore } from './notificationStore'
 
@@ -105,6 +105,10 @@ export interface TicketFilters {
   departmentId?: string
   tagId?: string
   search?: string
+  assigneeId?: string
+  unassigned?: boolean
+  slaOverdue?: boolean
+  slaWarning?: boolean
 }
 
 const STORAGE_KEY_TICKETS = 'tickets'
@@ -398,6 +402,14 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       if (filters.category && t.category !== filters.category) return false
       if (filters.departmentId && t.departmentId !== filters.departmentId) return false
       if (filters.tagId && !(t.tags ?? []).includes(filters.tagId)) return false
+      if (filters.assigneeId && t.assigneeId !== filters.assigneeId) return false
+      if (filters.unassigned && t.assigneeId) return false
+      if (filters.slaOverdue || filters.slaWarning) {
+        if (t.status === 'closed' || t.status === 'rejected' || t.status === 'merged') return false
+        const remaining = getSLARemaining(t.slaDeadline)
+        if (filters.slaOverdue && !remaining.isOverdue) return false
+        if (filters.slaWarning && !remaining.isWarning && !remaining.isOverdue) return false
+      }
       if (filters.search) {
         const s = filters.search.toLowerCase()
         const titleMatch = t.title.toLowerCase().includes(s)

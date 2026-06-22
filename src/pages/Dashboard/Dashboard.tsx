@@ -1,5 +1,5 @@
 import { Box, SimpleGrid, Card, CardBody, Heading, Text, HStack, VStack, Button, Icon, Badge, Tag } from '@chakra-ui/react'
-import { Ticket, Clock, Loader, CheckCircle, Plus, List, AlertTriangle, UserCheck, Inbox } from 'lucide-react'
+import { Ticket, Clock, Loader, CheckCircle, Plus, List, AlertTriangle, UserCheck, Inbox, BookOpen, BarChart3, FileText, CalendarClock } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
@@ -28,6 +28,51 @@ const STATS_CONFIG = [
     label: '已关闭',
     icon: CheckCircle,
     gradient: 'linear-gradient(135deg, #00B894, #55EFC4)',
+  },
+]
+
+const QUICK_ACTIONS = [
+  {
+    label: '创建工单',
+    icon: Plus,
+    path: '/tickets/create',
+    bg: 'linear-gradient(135deg, #6C5CE7, #A29BFE)',
+    roles: ['admin', 'agent', 'submitter'],
+  },
+  {
+    label: '待我处理',
+    icon: UserCheck,
+    path: '/tickets?filter=mine',
+    bg: 'linear-gradient(135deg, #0984E3, #74B9FF)',
+    roles: ['admin', 'agent'],
+  },
+  {
+    label: '超期告警',
+    icon: AlertTriangle,
+    path: '/tickets?filter=overdue',
+    bg: 'linear-gradient(135deg, #E53E3E, #FC8181)',
+    roles: ['admin', 'agent'],
+  },
+  {
+    label: '知识库',
+    icon: BookOpen,
+    path: '/knowledge',
+    bg: 'linear-gradient(135deg, #00B894, #55EFC4)',
+    roles: ['admin', 'agent', 'submitter'],
+  },
+  {
+    label: '工单列表',
+    icon: List,
+    path: '/tickets',
+    bg: 'linear-gradient(135deg, #4839C5, #6C5CE7)',
+    roles: ['admin', 'agent', 'submitter'],
+  },
+  {
+    label: '报表统计',
+    icon: BarChart3,
+    path: '/reports',
+    bg: 'linear-gradient(135deg, #F6AD55, #F6E05E)',
+    roles: ['admin', 'agent', 'submitter'],
   },
 ]
 
@@ -99,11 +144,48 @@ export default function Dashboard() {
     .sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
     .slice(0, 8)
 
+  const visibleQuickActions = QUICK_ACTIONS.filter(action =>
+    currentUser?.role ? action.roles.includes(currentUser.role) : false
+  )
+
   return (
     <Box p={6}>
       <Heading size="lg" mb={6}>
         仪表盘
       </Heading>
+
+      <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 6 }} spacing={4} mb={6}>
+        {visibleQuickActions.map(action => (
+          <Card
+            key={action.label}
+            cursor="pointer"
+            borderRadius="16px"
+            shadow="md"
+            _hover={{ transform: 'translateY(-3px)', shadow: 'lg' }}
+            transition="all 0.2s ease"
+            onClick={() => navigate(action.path)}
+          >
+            <CardBody py={6} display="flex" flexDirection="column" alignItems="center" justifyContent="center">
+              <Box
+                w="56px"
+                h="56px"
+                borderRadius="16px"
+                bgGradient={action.bg}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                mb={3}
+                shadow="md"
+              >
+                <Icon as={action.icon} boxSize={7} color="white" />
+              </Box>
+              <Text fontSize="sm" fontWeight="600" color="gray.700">
+                {action.label}
+              </Text>
+            </CardBody>
+          </Card>
+        ))}
+      </SimpleGrid>
 
       <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={5} mb={6}>
         {STATS_CONFIG.map((config, index) => (

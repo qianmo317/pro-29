@@ -1,9 +1,9 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useTicketStore, type TicketFilters } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
 import { useDepartmentStore } from '@/store/departmentStore'
 import { useTagStore } from '@/store/tagStore'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
   Card,
@@ -90,12 +90,34 @@ export default function TicketList() {
   const { isOpen: isBatchResultOpen, onOpen: onBatchResultOpen, onClose: onBatchResultClose } = useDisclosure()
   const cancelRef = useRef<HTMLButtonElement>(null)
 
+  const [searchParams, setSearchParams] = useSearchParams()
   const [filters, setFilters] = useState<TicketFilters>({})
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [mainTicketId, setMainTicketId] = useState('')
   const [sortField, setSortField] = useState<SortField>('createdAt')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+
+  useEffect(() => {
+    const filterParam = searchParams.get('filter')
+    if (!filterParam) return
+
+    const newFilters: TicketFilters = {}
+    switch (filterParam) {
+      case 'mine':
+        if (currentUser) {
+          newFilters.assigneeId = currentUser.id
+        }
+        break
+      case 'unassigned':
+        newFilters.unassigned = true
+        break
+      case 'overdue':
+        newFilters.slaOverdue = true
+        break
+    }
+    setFilters(prev => ({ ...prev, ...newFilters }))
+  }, [searchParams, currentUser])
 
   const [batchDepartmentId, setBatchDepartmentId] = useState('')
   const [batchAssigneeId, setBatchAssigneeId] = useState('')
