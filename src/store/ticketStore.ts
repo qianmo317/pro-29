@@ -40,7 +40,7 @@ interface TicketState {
   attachments: Attachment[]
   nextId: number
   initialize: () => void
-  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds' | 'tags'> & { tags?: string[] }, attachments?: AttachmentInput[]) => Ticket
+  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds' | 'relatedTicketIds' | 'tags'> & { tags?: string[] }, attachments?: AttachmentInput[]) => Ticket
   updateTicket: (id: string, updates: Partial<Ticket>) => void
   editTicket: (id: string, updates: EditableTicketFields, operatorId: string) => void
   assignTicket: (id: string, assigneeId: string, operatorId: string) => void
@@ -93,6 +93,9 @@ interface TicketState {
   getAttachmentById: (attachmentId: string) => Attachment | undefined
   getAllTicketAttachments: (ticketId: string) => Attachment[]
   downloadAttachment: (attachmentId: string) => void
+  addRelatedTicket: (ticketId: string, relatedId: string, operatorId: string) => boolean
+  removeRelatedTicket: (ticketId: string, relatedId: string, operatorId: string) => void
+  getRelatedTickets: (ticketId: string) => Ticket[]
 }
 
 export interface TicketFilters {
@@ -155,6 +158,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
         ...t,
         mergedToId: t.mergedToId ?? null,
         mergedTicketIds: t.mergedTicketIds ?? [],
+        relatedTicketIds: t.relatedTicketIds ?? [],
         departmentId: t.departmentId ?? null,
         tags: t.tags ?? [],
       }))
@@ -184,6 +188,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       slaDeadline: getSLADeadline(ticketData.priority, now),
       mergedToId: null,
       mergedTicketIds: [],
+      relatedTicketIds: [],
       departmentId: ticketData.departmentId ?? null,
       tags: ticketData.tags ?? [],
     }
@@ -964,5 +969,129 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+  },
+
+  addRelatedTicket: (ticketId, relatedId, operatorId) => {
+    const normalizedTicketId = ticketId.trim().toUpperCase()
+    const normalizedRelatedId = relatedId.trim().toUpperCase()
+
+    if (normalizedTicketId === normalizedRelatedId) return false
+    const ticket = get().getTicketById(normalizedTicketId)
+    const relatedTicket = get().getTicketById(normalizedRelatedId)
+    if (!ticket || !relatedTicket) return false
+
+    const existing = (ticket.relatedTicketIds ?? []).includes(normalizedRelatedId)
+    if (existing) return false
+
+    const now = new Date().toISOString()
+    const newRecord1: TicketRecord = {
+      id: `r_${Date.now()}_rel1`,
+      ticketId: normalizedTicketId,
+      operatorId,
+      action: 'related_added',
+      content: `关联工单 ${normalizedRelatedId}`,
+      createdAt: now,
+      attachmentIds: [],
+    }
+    const newRecord2: TicketRecord = {
+      id: `r_${Date.now()}_rel2`,
+      ticketId: normalizedRelatedId,
+      operatorId,
+      action: 'related_added',
+      content: `关联工单 ${normalizedTicketId}`,
+      createdAt: now,
+      attachmentIds: [],
+    }
+
+    set((state) => {
+      const tickets = state.tickets.map(t => {
+        if (t.id === normalizedTicketId) {
+          return {
+            ...t,
+            relatedTicketIds: [...new Set([...(t.relatedTicketIds ?? []), normalizedRelatedId])],
+            updatedAt: now,
+          }
+        }
+        if (t.id === normalizedRelatedId) {
+          return {
+            ...t,
+            relatedTicketIds: [...new Set([...(t.relatedTicketIds ?? []), normalizedTicketId])],
+            updatedAt: now,
+          }
+        }
+        return t
+      })
+      const records = [newRecord1, newRecord2, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+
+    useNotificationStore.getState().createNotificationsForFollowers(normalizedTicketId, newRecord1, operatorId)
+    useNotificationStore.getState().createNotificationsForFollowers(normalizedRelatedId, newRecord2, operatorId)
+    return true
+  },
+
+  removeRelatedTicket: (ticketId, relatedId, operatorId) => {
+    const normalizedTicketId = ticketId.trim().toUpperCase()
+    const normalizedRelatedId = relatedId.trim().toUpperCase()
+    const ticket = get().getTicketById(normalizedTicketId)
+    const relatedTicket = get().getTicketById(normalizedRelatedId)
+    if (!ticket || !relatedTicket) return
+
+    const now = new Date().toISOString()
+    const newRecord1: TicketRecord = {
+      id: `r_${Date.now()}_unrel1`,
+      ticketId: normalizedTicketId,
+      operatorId,
+      action: 'related_removed',
+      content: `取消关联工单 ${normalizedRelatedId}`,
+      createdAt: now,
+      attachmentIds: [],
+    }
+    const newRecord2: TicketRecord = {
+      id: `r_${Date.now()}_unrel2`,
+      ticketId: normalizedRelatedId,
+      operatorId,
+      action: 'related_removed',
+      content: `取消关联工单 ${normalizedTicketId}`,
+      createdAt: now,
+      attachmentIds: [],
+    }
+
+    set((state) => {
+      const tickets = state.tickets.map(t => {
+        if (t.id === normalizedTicketId) {
+          return {
+            ...t,
+            relatedTicketIds: (t.relatedTicketIds ?? []).filter(id => id !== normalizedRelatedId),
+            updatedAt: now,
+          }
+        }
+        if (t.id === normalizedRelatedId) {
+          return {
+            ...t,
+            relatedTicketIds: (t.relatedTicketIds ?? []).filter(id => id !== normalizedTicketId),
+            updatedAt: now,
+          }
+        }
+        return t
+      })
+      const records = [newRecord1, newRecord2, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+
+    useNotificationStore.getState().createNotificationsForFollowers(normalizedTicketId, newRecord1, operatorId)
+    useNotificationStore.getState().createNotificationsForFollowers(normalizedRelatedId, newRecord2, operatorId)
+  },
+
+  getRelatedTickets: (ticketId) => {
+    const ticket = get().getTicketById(ticketId)
+    if (!ticket || (ticket.relatedTicketIds ?? []).length === 0) return []
+    return (ticket.relatedTicketIds ?? [])
+      .map(id => get().getTicketById(id))
+      .filter((t): t is Ticket => t !== undefined)
   },
 }))

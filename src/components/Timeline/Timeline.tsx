@@ -14,6 +14,9 @@ const ACTION_COLORS: Record<string, string> = {
   merged_to: '#718096',
   edited: '#ED8936',
   evaluated: '#F5B041',
+  related_added: '#00CEC9',
+  related_removed: '#B2BEC3',
+  department_assigned: '#0984E3',
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -26,6 +29,9 @@ const ACTION_LABELS: Record<string, string> = {
   merged_to: '合并到主工单',
   edited: '编辑工单',
   evaluated: '提交评价',
+  related_added: '关联工单',
+  related_removed: '取消关联',
+  department_assigned: '指派部门',
 }
 
 const ALL_COLOR = '#6C5CE7'

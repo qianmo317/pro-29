@@ -32,7 +32,7 @@ import {
   Checkbox,
   Input,
 } from '@chakra-ui/react'
-import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff, Merge, ExternalLink, Pencil, Star } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff, Merge, ExternalLink, Pencil, Star, Link2, Link2Off, Plus } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import Timeline from '@/components/Timeline/Timeline'
@@ -81,6 +81,7 @@ export default function TicketDetail() {
   const [commentAttachments, setCommentAttachments] = useState<PendingAttachment[]>([])
   const [mergeSearch, setMergeSearch] = useState('')
   const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([])
+  const [relatedInput, setRelatedInput] = useState('')
 
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
@@ -103,12 +104,49 @@ export default function TicketDetail() {
     () => (ticket ? ticketStore.getMainTicket(ticket.id) : undefined),
     [ticket, ticketStore]
   )
+  const relatedTickets = useMemo(
+    () => (ticket ? ticketStore.getRelatedTickets(ticket.id) : []),
+    [ticket, ticketStore, ticketStore.tickets]
+  )
   const isMerged = useMemo(
     () => (ticket ? ticketStore.isTicketMerged(ticket.id) : false),
     [ticket, ticketStore]
   )
   const following = ticket && currentUser ? isFollowing(ticket.id, currentUser.id) : false
   const evaluation = ticket ? ticketStore.getEvaluationByTicketId(ticket.id) : undefined
+
+  const handleAddRelated = () => {
+    if (!ticket || !currentUser) return
+    const input = relatedInput.trim()
+    if (!input) {
+      toast({ title: '请输入工单编号', status: 'warning', duration: 2000 })
+      return
+    }
+    const normalized = input.toUpperCase()
+    if (normalized === ticket.id) {
+      toast({ title: '不能关联当前工单自己', status: 'warning', duration: 2000 })
+      return
+    }
+    const target = ticketStore.getTicketById(normalized)
+    if (!target) {
+      toast({ title: `工单 ${normalized} 不存在`, status: 'error', duration: 2000 })
+      return
+    }
+    const success = ticketStore.addRelatedTicket(ticket.id, normalized, currentUser.id)
+    if (success) {
+      toast({ title: `已关联工单 ${normalized}`, status: 'success', duration: 2000 })
+      setRelatedInput('')
+    } else {
+      toast({ title: `工单 ${normalized} 已关联`, status: 'info', duration: 2000 })
+      setRelatedInput('')
+    }
+  }
+
+  const handleRemoveRelated = (relatedId: string) => {
+    if (!ticket || !currentUser) return
+    ticketStore.removeRelatedTicket(ticket.id, relatedId, currentUser.id)
+    toast({ title: `已取消关联工单 ${relatedId}`, status: 'info', duration: 2000 })
+  }
 
   const handleOpenEdit = () => {
     if (!ticket) return
@@ -654,6 +692,87 @@ export default function TicketDetail() {
           </CardBody>
         </Card>
       )}
+
+      <Card borderRadius="16px">
+        <CardBody p={5}>
+          <HStack mb={4} spacing={2}>
+            <Icon as={Link2} size={18} color="#00CEC9" />
+            <Text fontSize="sm" fontWeight="600" color="#2D3748" flex={1}>
+              关联工单（{relatedTickets.length} 个）
+            </Text>
+          </HStack>
+
+          {!isMerged && (
+            <HStack mb={4} spacing={2}>
+              <Input
+                placeholder="输入工单编号，如 TK-003"
+                value={relatedInput}
+                onChange={e => setRelatedInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddRelated() }}
+                borderRadius="8px"
+                flex={1}
+                size="sm"
+              />
+              <Button
+                colorScheme="teal"
+                size="sm"
+                leftIcon={<Icon as={Plus} size={14} />}
+                onClick={handleAddRelated}
+                borderRadius="8px"
+              >
+                添加关联
+              </Button>
+            </HStack>
+          )}
+
+          {relatedTickets.length === 0 ? (
+            <VStack py={4} spacing={1}>
+              <Icon as={Link2Off} size={20} color="gray.300" />
+              <Text fontSize="sm" color="gray.400">暂无关联工单</Text>
+            </VStack>
+          ) : (
+            <VStack align="stretch" spacing={2}>
+              {relatedTickets.map(t => (
+                <HStack
+                  key={t.id}
+                  p={3}
+                  bg="teal.50"
+                  borderRadius="8px"
+                  cursor="pointer"
+                  _hover={{ bg: 'teal.100' }}
+                  onClick={() => navigate(`/tickets/${t.id}`)}
+                  transition="all 0.15s ease"
+                  border="1px solid"
+                  borderColor="teal.100"
+                >
+                  <Badge colorScheme="teal" borderRadius="6px">{t.id}</Badge>
+                  <Text fontSize="sm" flex={1} isTruncated fontWeight="500">{t.title}</Text>
+                  <StatusBadge status={t.status} size="sm" />
+                  {!isMerged && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="gray"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleRemoveRelated(t.id)
+                      }}
+                      p={1}
+                      minW="auto"
+                      h="auto"
+                      borderRadius="6px"
+                      title="取消关联"
+                    >
+                      <Icon as={X} size={14} />
+                    </Button>
+                  )}
+                  <Icon as={ExternalLink} size={14} color="gray.500" />
+                </HStack>
+              ))}
+            </VStack>
+          )}
+        </CardBody>
+      </Card>
 
       <SimpleGrid columns={3} spacing={6}>
         <Box gridColumn="span 2">

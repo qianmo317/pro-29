@@ -54,6 +54,7 @@ export interface Ticket {
   knowledgeId: string | null
   mergedToId: string | null
   mergedTicketIds: string[]
+  relatedTicketIds: string[]
 }
 
 export interface Attachment {
