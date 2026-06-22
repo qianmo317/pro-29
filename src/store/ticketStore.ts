@@ -34,6 +34,9 @@ interface EditableTicketFields {
   tags: string[]
 }
 
+export const DELETED_RETENTION_DAYS = 30
+export const ARCHIVE_AFTER_DAYS = 90
+
 interface TicketState {
   tickets: Ticket[]
   records: TicketRecord[]
@@ -42,16 +45,16 @@ interface TicketState {
   comments: TicketComment[]
   nextId: number
   initialize: () => void
-  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds' | 'relatedTicketIds' | 'tags'> & { tags?: string[] }, attachments?: AttachmentInput[]) => Ticket
+  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds' | 'relatedTicketIds' | 'tags' | 'deletedAt' | 'deletedBy' | 'archivedAt' | 'archivedBy'> & { tags?: string[] }, attachments?: AttachmentInput[]) => Ticket
   updateTicket: (id: string, updates: Partial<Ticket>) => void
   editTicket: (id: string, updates: EditableTicketFields, operatorId: string) => void
   assignTicket: (id: string, assigneeId: string, operatorId: string) => void
   assignDepartment: (id: string, departmentId: string, operatorId: string) => void
   changeStatus: (id: string, status: TicketStatus, operatorId: string, content: string) => void
   addRecord: (ticketId: string, operatorId: string, action: string, content: string, attachments?: AttachmentInput[]) => void
-  getTicketById: (id: string) => Ticket | undefined
+  getTicketById: (id: string, includeDeleted?: boolean, includeArchived?: boolean) => Ticket | undefined
   getRecordsByTicketId: (id: string) => TicketRecord[]
-  getFilteredTickets: (filters: TicketFilters, users?: { id: string; name: string }[]) => Ticket[]
+  getFilteredTickets: (filters: TicketFilters, users?: { id: string; name: string }[], includeDeleted?: boolean, includeArchived?: boolean) => Ticket[]
   addEvaluation: (ticketId: string, rating: number, comment: string, evaluatorId: string) => void
   getEvaluationByTicketId: (ticketId: string) => TicketEvaluation | undefined
   getEvaluationStats: () => Array<{ agentId: string; averageRating: number; count: number; distribution: Record<number, number> }>
@@ -103,6 +106,18 @@ interface TicketState {
   updateComment: (commentId: string, content: string, operatorId: string) => void
   deleteComment: (commentId: string, operatorId: string) => boolean
   getCommentById: (commentId: string) => TicketComment | undefined
+  softDeleteTicket: (ticketId: string, operatorId: string) => boolean
+  restoreTicket: (ticketId: string, operatorId: string) => boolean
+  permanentlyDeleteTicket: (ticketId: string) => boolean
+  getDeletedTickets: () => Ticket[]
+  getDaysUntilExpiration: (deletedAt: string) => number
+  archiveTicket: (ticketId: string, operatorId: string) => boolean
+  unarchiveTicket: (ticketId: string, operatorId: string) => boolean
+  getArchivedTickets: () => Ticket[]
+  getTicketsEligibleForArchive: () => Ticket[]
+  batchArchiveTickets: (ticketIds: string[], operatorId: string) => BatchOperationResult
+  cleanupExpiredDeletedTickets: () => number
+  autoArchiveOldTickets: () => number
 }
 
 export interface TicketFilters {
@@ -175,6 +190,10 @@ export const useTicketStore = create<TicketState>((set, get) => ({
         relatedTicketIds: t.relatedTicketIds ?? [],
         departmentId: t.departmentId ?? null,
         tags: t.tags ?? [],
+        deletedAt: t.deletedAt ?? null,
+        deletedBy: t.deletedBy ?? null,
+        archivedAt: t.archivedAt ?? null,
+        archivedBy: t.archivedBy ?? null,
       }))
       set({ tickets: normalizedTickets })
     }
@@ -206,6 +225,10 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       relatedTicketIds: [],
       departmentId: ticketData.departmentId ?? null,
       tags: ticketData.tags ?? [],
+      deletedAt: null,
+      deletedBy: null,
+      archivedAt: null,
+      archivedBy: null,
     }
     const newRecord: TicketRecord = {
       id: newRecordId,
@@ -391,8 +414,13 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     useNotificationStore.getState().createNotificationsForFollowers(ticketId, record, operatorId)
   },
 
-  getTicketById: (id) => {
-    return get().tickets.find(t => t.id === id)
+  getTicketById: (id, includeDeleted = false, includeArchived = false) => {
+    return get().tickets.find(t => {
+      if (t.id !== id) return false
+      if (!includeDeleted && t.deletedAt) return false
+      if (!includeArchived && t.archivedAt) return false
+      return true
+    })
   },
 
   getRecordsByTicketId: (id) => {
@@ -406,8 +434,10 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     )
   },
 
-  getFilteredTickets: (filters, users) => {
+  getFilteredTickets: (filters, users, includeDeleted = false, includeArchived = false) => {
     return get().tickets.filter(t => {
+      if (!includeDeleted && t.deletedAt) return false
+      if (!includeArchived && t.archivedAt) return false
       if (filters.status && t.status !== filters.status) return false
       if (filters.priority && t.priority !== filters.priority) return false
       if (filters.category && t.category !== filters.category) return false
@@ -500,19 +530,20 @@ export const useTicketStore = create<TicketState>((set, get) => ({
 
   getStats: () => {
     const { tickets } = get()
-    const totalCount = tickets.length
-    const pendingCount = tickets.filter(t => t.status === 'pending' || t.status === 'assigned').length
-    const inProgressCount = tickets.filter(t => t.status === 'in_progress').length
-    const closedCount = tickets.filter(t => t.status === 'closed').length
+    const activeTickets = tickets.filter(t => !t.deletedAt && !t.archivedAt)
+    const totalCount = activeTickets.length
+    const pendingCount = activeTickets.filter(t => t.status === 'pending' || t.status === 'assigned').length
+    const inProgressCount = activeTickets.filter(t => t.status === 'in_progress').length
+    const closedCount = activeTickets.filter(t => t.status === 'closed').length
 
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    const thisMonthCreated = tickets.filter(t => new Date(t.createdAt) >= startOfMonth).length
-    const thisMonthClosed = tickets.filter(t =>
+    const thisMonthCreated = activeTickets.filter(t => new Date(t.createdAt) >= startOfMonth).length
+    const thisMonthClosed = activeTickets.filter(t =>
       t.status === 'closed' && new Date(t.updatedAt) >= startOfMonth
     ).length
 
-    const resolved = tickets.filter(t => t.status === 'closed' || t.status === 'rejected')
+    const resolved = activeTickets.filter(t => t.status === 'closed' || t.status === 'rejected')
     let avgResolutionTime = '-'
     if (resolved.length > 0) {
       const totalHours = resolved.reduce((sum, t) => {
@@ -1186,5 +1217,230 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       return { comments }
     })
     return true
+  },
+
+  softDeleteTicket: (ticketId, operatorId) => {
+    const ticket = get().getTicketById(ticketId, true, true)
+    if (!ticket || ticket.deletedAt) return false
+    const now = new Date().toISOString()
+    const record: TicketRecord = {
+      id: `r_${Date.now()}_delete`,
+      ticketId,
+      operatorId,
+      action: 'deleted',
+      content: '工单已移入回收站',
+      createdAt: now,
+      attachmentIds: [],
+    }
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        t.id === ticketId ? { ...t, deletedAt: now, deletedBy: operatorId, updatedAt: now } : t
+      )
+      const records = [record, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+    return true
+  },
+
+  restoreTicket: (ticketId, operatorId) => {
+    const ticket = get().tickets.find(t => t.id === ticketId)
+    if (!ticket || !ticket.deletedAt) return false
+    const now = new Date().toISOString()
+    const record: TicketRecord = {
+      id: `r_${Date.now()}_restore`,
+      ticketId,
+      operatorId,
+      action: 'restored',
+      content: '工单已从回收站恢复',
+      createdAt: now,
+      attachmentIds: [],
+    }
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        t.id === ticketId ? { ...t, deletedAt: null, deletedBy: null, updatedAt: now } : t
+      )
+      const records = [record, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+    return true
+  },
+
+  permanentlyDeleteTicket: (ticketId) => {
+    const ticket = get().tickets.find(t => t.id === ticketId)
+    if (!ticket) return false
+    set((state) => {
+      const tickets = state.tickets.filter(t => t.id !== ticketId)
+      const records = state.records.filter(r => r.ticketId !== ticketId)
+      const evaluations = state.evaluations.filter(e => e.ticketId !== ticketId)
+      const attachments = state.attachments.filter(a => a.ticketId !== ticketId)
+      const comments = state.comments.filter(c => c.ticketId !== ticketId)
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      saveToStorage(STORAGE_KEY_EVALUATIONS, evaluations)
+      saveToStorage(STORAGE_KEY_ATTACHMENTS, attachments)
+      saveToStorage(STORAGE_KEY_COMMENTS, comments)
+      return { tickets, records, evaluations, attachments, comments }
+    })
+    return true
+  },
+
+  getDeletedTickets: () => {
+    return get().tickets.filter(t => t.deletedAt !== null)
+  },
+
+  getDaysUntilExpiration: (deletedAt: string) => {
+    const deleted = new Date(deletedAt)
+    const now = new Date()
+    const expiration = new Date(deleted.getTime() + DELETED_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+    const msRemaining = expiration.getTime() - now.getTime()
+    const daysRemaining = Math.ceil(msRemaining / (24 * 60 * 60 * 1000))
+    return Math.max(0, daysRemaining)
+  },
+
+  archiveTicket: (ticketId, operatorId) => {
+    const ticket = get().getTicketById(ticketId, true, true)
+    if (!ticket || ticket.archivedAt) return false
+    if (ticket.status !== 'closed' && ticket.status !== 'rejected') return false
+    const now = new Date().toISOString()
+    const record: TicketRecord = {
+      id: `r_${Date.now()}_archive`,
+      ticketId,
+      operatorId,
+      action: 'archived',
+      content: '工单已归档',
+      createdAt: now,
+      attachmentIds: [],
+    }
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        t.id === ticketId ? { ...t, archivedAt: now, archivedBy: operatorId, updatedAt: now } : t
+      )
+      const records = [record, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+    return true
+  },
+
+  unarchiveTicket: (ticketId, operatorId) => {
+    const ticket = get().tickets.find(t => t.id === ticketId)
+    if (!ticket || !ticket.archivedAt) return false
+    const now = new Date().toISOString()
+    const record: TicketRecord = {
+      id: `r_${Date.now()}_unarchive`,
+      ticketId,
+      operatorId,
+      action: 'unarchived',
+      content: '工单已从归档恢复',
+      createdAt: now,
+      attachmentIds: [],
+    }
+    set((state) => {
+      const tickets = state.tickets.map(t =>
+        t.id === ticketId ? { ...t, archivedAt: null, archivedBy: null, updatedAt: now } : t
+      )
+      const records = [record, ...state.records]
+      saveToStorage(STORAGE_KEY_TICKETS, tickets)
+      saveToStorage(STORAGE_KEY_RECORDS, records)
+      return { tickets, records }
+    })
+    return true
+  },
+
+  getArchivedTickets: () => {
+    return get().tickets.filter(t => t.archivedAt !== null)
+  },
+
+  getTicketsEligibleForArchive: () => {
+    const now = new Date()
+    const cutoffDate = new Date(now.getTime() - ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000)
+    return get().tickets.filter(t =>
+      !t.deletedAt &&
+      !t.archivedAt &&
+      (t.status === 'closed' || t.status === 'rejected') &&
+      new Date(t.updatedAt) <= cutoffDate
+    )
+  },
+
+  batchArchiveTickets: (ticketIds, operatorId) => {
+    const now = new Date().toISOString()
+    const failedItems: BatchOperationResult['failedItems'] = []
+    const archiveableTickets: Ticket[] = []
+    const newRecords: TicketRecord[] = []
+
+    ticketIds.forEach((id, index) => {
+      const ticket = get().getTicketById(id, true, true)
+      if (!ticket) {
+        failedItems.push({ id, title: '未知工单', reason: '工单不存在' })
+        return
+      }
+      if (ticket.archivedAt) {
+        failedItems.push({ id, title: ticket.title, reason: '工单已归档' })
+        return
+      }
+      if (ticket.status !== 'closed' && ticket.status !== 'rejected') {
+        failedItems.push({ id, title: ticket.title, reason: '仅已关闭或已驳回的工单可归档' })
+        return
+      }
+      archiveableTickets.push(ticket)
+      newRecords.push({
+        id: `r_${Date.now()}_batcharchive_${index}`,
+        ticketId: id,
+        operatorId,
+        action: 'archived',
+        content: '批量归档工单',
+        createdAt: now,
+        attachmentIds: [],
+      })
+    })
+
+    if (archiveableTickets.length > 0) {
+      const archiveableIds = new Set(archiveableTickets.map(t => t.id))
+      set((state) => {
+        const tickets = state.tickets.map(t =>
+          archiveableIds.has(t.id)
+            ? { ...t, archivedAt: now, archivedBy: operatorId, updatedAt: now }
+            : t
+        )
+        const records = [...newRecords, ...state.records]
+        saveToStorage(STORAGE_KEY_TICKETS, tickets)
+        saveToStorage(STORAGE_KEY_RECORDS, records)
+        return { tickets, records }
+      })
+    }
+
+    return {
+      total: ticketIds.length,
+      success: archiveableTickets.length,
+      failed: failedItems.length,
+      failedItems,
+    }
+  },
+
+  cleanupExpiredDeletedTickets: () => {
+    const now = new Date()
+    const cutoffDate = new Date(now.getTime() - DELETED_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+    const expiredIds = get().tickets
+      .filter(t => t.deletedAt && new Date(t.deletedAt) <= cutoffDate)
+      .map(t => t.id)
+
+    expiredIds.forEach(id => {
+      get().permanentlyDeleteTicket(id)
+    })
+
+    return expiredIds.length
+  },
+
+  autoArchiveOldTickets: () => {
+    const eligible = get().getTicketsEligibleForArchive()
+    eligible.forEach(ticket => {
+      get().archiveTicket(ticket.id, 'system')
+    })
+    return eligible.length
   },
 }))

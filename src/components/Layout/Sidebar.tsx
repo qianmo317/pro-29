@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Box, VStack, HStack, Text, Icon } from '@chakra-ui/react'
-import { LayoutDashboard, TicketCheck, BookOpen, BarChart3, User, FileText, CalendarClock, Megaphone, Clock } from 'lucide-react'
+import { LayoutDashboard, TicketCheck, BookOpen, BarChart3, User, FileText, CalendarClock, Megaphone, Clock, Trash2, Archive } from 'lucide-react'
 import { useUserStore } from '@/store/userStore'
 
 const NAV_ITEMS = [
@@ -10,6 +10,8 @@ const NAV_ITEMS = [
   { label: '公告管理', icon: Megaphone, path: '/announcements', roles: ['admin'] },
   { label: '模板管理', icon: FileText, path: '/templates', roles: ['admin'] },
   { label: 'SLA 配置', icon: Clock, path: '/sla', roles: ['admin'] },
+  { label: '工单回收站', icon: Trash2, path: '/recycle-bin', roles: ['admin'] },
+  { label: '归档工单', icon: Archive, path: '/archived-tickets', roles: ['admin'] },
   { label: '知识库', icon: BookOpen, path: '/knowledge', roles: ['admin', 'agent', 'submitter'] },
   { label: '报表统计', icon: BarChart3, path: '/reports', roles: ['admin', 'agent', 'submitter'] },
 ]

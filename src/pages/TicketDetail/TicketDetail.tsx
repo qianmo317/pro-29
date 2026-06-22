@@ -32,7 +32,7 @@ import {
   Checkbox,
   Input,
 } from '@chakra-ui/react'
-import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff, Merge, ExternalLink, Pencil, Star, Link2, Link2Off, Plus } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Play, Check, X, MessageSquare, RotateCcw, Bell, BellOff, Merge, ExternalLink, Pencil, Star, Link2, Link2Off, Plus, Trash2, Archive } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge/StatusBadge'
 import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import Timeline from '@/components/Timeline/Timeline'
@@ -44,7 +44,14 @@ import AttachmentList from '@/components/AttachmentList/AttachmentList'
 import DiscussionSection from '@/components/DiscussionSection/DiscussionSection'
 import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS, MAX_RATING, RATING_LABELS } from '@/types'
 import { type TicketStatus, type TicketCategory, type TicketPriority } from '@/types'
-import { FormControl, FormLabel, FormErrorMessage } from '@chakra-ui/react'
+import { FormControl, FormLabel, FormErrorMessage,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogContent,
+  AlertDialogOverlay,
+  AlertDialogCloseButton, } from '@chakra-ui/react'
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso)
@@ -75,6 +82,8 @@ export default function TicketDetail() {
   const { isFollowing, followTicket, unfollowTicket } = useNotificationStore()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure()
+  const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure()
+  const { isOpen: isArchiveOpen, onOpen: onArchiveOpen, onClose: onArchiveClose } = useDisclosure()
 
   const [assigneeId, setAssigneeId] = useState('')
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
@@ -95,7 +104,7 @@ export default function TicketDetail() {
   const [evalComment, setEvalComment] = useState('')
   const [evalSubmitted, setEvalSubmitted] = useState(false)
 
-  const ticket = ticketStore.getTicketById(id || '')
+  const ticket = ticketStore.getTicketById(id || '', true, true)
   const records = ticketStore.getRecordsByTicketId(id || '')
   const mergedTickets = useMemo(
     () => (ticket ? ticketStore.getMergedTickets(ticket.id) : []),
@@ -107,7 +116,7 @@ export default function TicketDetail() {
   )
   const relatedTickets = useMemo(
     () => (ticket ? ticketStore.getRelatedTickets(ticket.id) : []),
-    [ticket, ticketStore, ticketStore.tickets]
+    [ticket, ticketStore]
   )
   const isMerged = useMemo(
     () => (ticket ? ticketStore.isTicketMerged(ticket.id) : false),
@@ -115,6 +124,38 @@ export default function TicketDetail() {
   )
   const following = ticket && currentUser ? isFollowing(ticket.id, currentUser.id) : false
   const evaluation = ticket ? ticketStore.getEvaluationByTicketId(ticket.id) : undefined
+
+  const candidateTickets = useMemo(() => {
+    if (!ticket) return []
+    const s = mergeSearch.toLowerCase().trim()
+    return ticketStore.tickets.filter(t => {
+      if (t.id === ticket.id) return false
+      if (t.status === 'merged') return false
+      if ((t.mergedTicketIds ?? []).length > 0) return false
+      if (s && !t.title.toLowerCase().includes(s) && !t.id.toLowerCase().includes(s)) return false
+      return true
+    }).slice(0, 20)
+  }, [ticketStore.tickets, ticket, mergeSearch])
+
+  const agents = useMemo(() => {
+    if (selectedDepartmentId) {
+      return getAgentsByDepartment(selectedDepartmentId)
+    }
+    return users.filter(u => u.role === 'agent' || u.role === 'admin')
+  }, [users, selectedDepartmentId, getAgentsByDepartment])
+
+  useEffect(() => {
+    if (ticket?.departmentId) {
+      setSelectedDepartmentId(ticket.departmentId)
+    }
+  }, [ticket?.id, ticket?.departmentId])
+
+  const isAdmin = currentUser?.role === 'admin'
+  const isDeleted = !!ticket?.deletedAt
+  const isArchived = !!ticket?.archivedAt
+  const canArchive = ticket?.status === 'closed' && !isArchived && !isDeleted
+
+  if (!currentUser) return null
 
   const handleAddRelated = () => {
     if (!ticket || !currentUser) return
@@ -189,20 +230,6 @@ export default function TicketDetail() {
     onEditClose()
   }
 
-  const candidateTickets = useMemo(() => {
-    if (!ticket) return []
-    const s = mergeSearch.toLowerCase().trim()
-    return ticketStore.tickets.filter(t => {
-      if (t.id === ticket.id) return false
-      if (t.status === 'merged') return false
-      if ((t.mergedTicketIds ?? []).length > 0) return false
-      if (s && !t.title.toLowerCase().includes(s) && !t.id.toLowerCase().includes(s)) return false
-      return true
-    }).slice(0, 20)
-  }, [ticketStore.tickets, ticket, mergeSearch])
-
-  if (!currentUser) return null
-
   const handleToggleFollow = () => {
     if (!ticket || !currentUser || isMerged) return
     if (following) {
@@ -225,24 +252,11 @@ export default function TicketDetail() {
     )
   }
 
-  useEffect(() => {
-    if (ticket?.departmentId) {
-      setSelectedDepartmentId(ticket.departmentId)
-    }
-  }, [ticket?.id])
-
   const getUserName = (userId: string | null) => {
     if (!userId) return '未分配'
     const user = users.find(u => u.id === userId)
     return user ? user.name : '未知'
   }
-
-  const agents = useMemo(() => {
-    if (selectedDepartmentId) {
-      return getAgentsByDepartment(selectedDepartmentId)
-    }
-    return users.filter(u => u.role === 'agent' || u.role === 'admin')
-  }, [users, selectedDepartmentId, getAgentsByDepartment])
 
   const handleDepartmentChange = (deptId: string) => {
     setSelectedDepartmentId(deptId)
@@ -360,246 +374,337 @@ export default function TicketDetail() {
     onClose()
   }
 
-  const renderActionPanel = () => {
-    if (isMerged) {
-      return (
-        <VStack align="stretch" spacing={3}>
-          <Card borderRadius="12px" bg="gray.50" border="1px solid" borderColor="gray.200">
-            <CardBody py={3} px={4}>
-              <HStack spacing={2}>
-                <Icon as={AlertTriangle} color="gray.500" boxSize={5} />
-                <VStack align="stretch" spacing={1} flex={1}>
-                  <Text fontSize="sm" fontWeight="600" color="gray.600">
-                    此工单已被合并
-                  </Text>
-                  <Text fontSize="xs" color="gray.500">
-                    合并后工单为只读状态，所有操作已禁用
-                  </Text>
-                </VStack>
-              </HStack>
-              {mainTicket && (
-                <Button
-                  mt={3}
-                  size="sm"
-                  variant="outline"
-                  colorScheme="blue"
-                  leftIcon={<ExternalLink size={14} />}
-                  onClick={() => navigate(`/tickets/${mainTicket.id}`)}
-                  w="full"
-                >
-                  查看主工单 {mainTicket.id}
-                </Button>
-              )}
-            </CardBody>
-          </Card>
-        </VStack>
-      )
+  const handleSoftDelete = () => {
+    if (!ticket || !currentUser) return
+    const success = ticketStore.softDeleteTicket(ticket.id, currentUser.id)
+    if (success) {
+      toast({ title: '工单已移入回收站，保留30天', status: 'success', duration: 3000 })
+      onDeleteClose()
+      navigate('/tickets')
+    } else {
+      toast({ title: '删除失败', status: 'error', duration: 2000 })
     }
+  }
 
-    switch (ticket.status) {
-      case 'pending':
+  const handleArchive = () => {
+    if (!ticket || !currentUser) return
+    const success = ticketStore.archiveTicket(ticket.id, currentUser.id)
+    if (success) {
+      toast({ title: '工单已归档', status: 'success', duration: 2000 })
+      onArchiveClose()
+    } else {
+      toast({ title: '归档失败，工单需已关闭', status: 'error', duration: 2000 })
+    }
+  }
+
+  const renderActionPanel = () => {
+    const statusActions = (() => {
+      if (isMerged) {
         return (
           <VStack align="stretch" spacing={3}>
-            <VStack align="stretch" spacing={2}>
-              <Select
-                placeholder="选择部门（先选部门可筛选人员）"
-                value={selectedDepartmentId}
-                onChange={e => handleDepartmentChange(e.target.value)}
-                borderRadius="8px"
-              >
-                {departments.map(dept => (
-                  <option key={dept.id} value={dept.id}>{dept.name}</option>
-                ))}
-              </Select>
-              <HStack>
+            <Card borderRadius="12px" bg="gray.50" border="1px solid" borderColor="gray.200">
+              <CardBody py={3} px={4}>
+                <HStack spacing={2}>
+                  <Icon as={AlertTriangle} color="gray.500" boxSize={5} />
+                  <VStack align="stretch" spacing={1} flex={1}>
+                    <Text fontSize="sm" fontWeight="600" color="gray.600">
+                      此工单已被合并
+                    </Text>
+                    <Text fontSize="xs" color="gray.500">
+                      合并后工单为只读状态，所有操作已禁用
+                    </Text>
+                  </VStack>
+                </HStack>
+                {mainTicket && (
+                  <Button
+                    mt={3}
+                    size="sm"
+                    variant="outline"
+                    colorScheme="blue"
+                    leftIcon={<ExternalLink size={14} />}
+                    onClick={() => navigate(`/tickets/${mainTicket.id}`)}
+                    w="full"
+                  >
+                    查看主工单 {mainTicket.id}
+                  </Button>
+                )}
+              </CardBody>
+            </Card>
+          </VStack>
+        )
+      }
+
+      switch (ticket.status) {
+        case 'pending':
+          return (
+            <VStack align="stretch" spacing={3}>
+              <VStack align="stretch" spacing={2}>
                 <Select
-                  placeholder={selectedDepartmentId ? '选择部门内处理人（可选）' : '选择处理人（可选）'}
-                  value={assigneeId}
-                  onChange={e => setAssigneeId(e.target.value)}
+                  placeholder="选择部门（先选部门可筛选人员）"
+                  value={selectedDepartmentId}
+                  onChange={e => handleDepartmentChange(e.target.value)}
                   borderRadius="8px"
-                  flex={1}
-                  isDisabled={selectedDepartmentId && agents.length === 0}
                 >
-                  {agents.map(agent => (
-                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                  {departments.map(dept => (
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
                   ))}
                 </Select>
+                <HStack>
+                  <Select
+                    placeholder={selectedDepartmentId ? '选择部门内处理人（可选）' : '选择处理人（可选）'}
+                    value={assigneeId}
+                    onChange={e => setAssigneeId(e.target.value)}
+                    borderRadius="8px"
+                    flex={1}
+                    isDisabled={selectedDepartmentId && agents.length === 0}
+                  >
+                    {agents.map(agent => (
+                      <option key={agent.id} value={agent.id}>{agent.name}</option>
+                    ))}
+                  </Select>
+                </HStack>
+                {selectedDepartmentId && agents.length === 0 && (
+                  <Text fontSize="xs" color="orange.500">该部门暂无处理人</Text>
+                )}
+              </VStack>
+              <HStack>
+                <Button
+                  variant="outline"
+                  colorScheme="blue"
+                  onClick={handleAssignDepartment}
+                  flex={1}
+                  isDisabled={!selectedDepartmentId}
+                >
+                  仅指派部门
+                </Button>
+                <Button
+                  colorScheme="blue"
+                  onClick={handleAssign}
+                  flex={1}
+                  isDisabled={!assigneeId}
+                >
+                  分配处理人
+                </Button>
               </HStack>
-              {selectedDepartmentId && agents.length === 0 && (
-                <Text fontSize="xs" color="orange.500">该部门暂无处理人</Text>
-              )}
-            </VStack>
-            <HStack>
+              <Divider />
               <Button
+                leftIcon={<Merge size={16} />}
                 variant="outline"
-                colorScheme="blue"
-                onClick={handleAssignDepartment}
-                flex={1}
-                isDisabled={!selectedDepartmentId}
+                colorScheme="purple"
+                onClick={onOpen}
+                size="sm"
               >
-                仅指派部门
+                合并其他工单
+              </Button>
+            </VStack>
+          )
+        case 'assigned':
+          return (
+            <VStack align="stretch" spacing={3}>
+              <Button
+                colorScheme="purple"
+                leftIcon={<Icon as={Play} />}
+                onClick={() => handleStatusChange('in_progress', '开始处理工单')}
+                w="full"
+              >
+                开始处理
               </Button>
               <Button
-                colorScheme="blue"
-                onClick={handleAssign}
-                flex={1}
-                isDisabled={!assigneeId}
+                leftIcon={<Merge size={16} />}
+                variant="outline"
+                colorScheme="purple"
+                onClick={onOpen}
+                size="sm"
               >
-                分配处理人
+                合并其他工单
               </Button>
-            </HStack>
-            <Divider />
-            <Button
-              leftIcon={<Merge size={16} />}
-              variant="outline"
-              colorScheme="purple"
-              onClick={onOpen}
-              size="sm"
-            >
-              合并其他工单
-            </Button>
-          </VStack>
-        )
-      case 'assigned':
-        return (
-          <VStack align="stretch" spacing={3}>
-            <Button
-              colorScheme="purple"
-              leftIcon={<Icon as={Play} />}
-              onClick={() => handleStatusChange('in_progress', '开始处理工单')}
-              w="full"
-            >
-              开始处理
-            </Button>
-            <Button
-              leftIcon={<Merge size={16} />}
-              variant="outline"
-              colorScheme="purple"
-              onClick={onOpen}
-              size="sm"
-            >
-              合并其他工单
-            </Button>
-          </VStack>
-        )
-      case 'in_progress':
-        return (
-          <VStack align="stretch" spacing={3}>
-            <Button
-              colorScheme="blue"
-              leftIcon={<Icon as={Check} />}
-              onClick={() => handleStatusChange('waiting_confirmation', '提交待确认')}
-            >
-              提交待确认
-            </Button>
-            <Divider />
-            <HStack spacing={1} mb={-2}>
-              <Icon as={MessageSquare} size={14} color="#2D3748" />
-              <Text fontSize="sm" fontWeight="600" color="#2D3748">添加备注</Text>
-            </HStack>
-            <Textarea
-              value={comment}
-              onChange={e => setComment(e.target.value)}
-              placeholder="输入备注内容..."
-              borderRadius="8px"
-              rows={3}
-            />
-            <AttachmentUploader
-              value={commentAttachments}
-              onChange={setCommentAttachments}
-              maxFiles={5}
-            />
-            <Button
-              colorScheme="gray"
-              leftIcon={<Icon as={MessageSquare} />}
-              onClick={handleAddComment}
-              size="sm"
-              isDisabled={!comment.trim() && commentAttachments.length === 0}
-            >
-              提交备注
-            </Button>
-            <Divider />
-            <Button
-              leftIcon={<Merge size={16} />}
-              variant="outline"
-              colorScheme="purple"
-              onClick={onOpen}
-              size="sm"
-            >
-              合并其他工单
-            </Button>
-          </VStack>
-        )
-      case 'waiting_confirmation':
-        return (
-          <VStack align="stretch" spacing={3}>
-            <Button
-              colorScheme="green"
-              leftIcon={<Icon as={Check} />}
-              onClick={() => handleStatusChange('closed', '确认完成')}
-            >
-              确认完成
-            </Button>
-            <Button
-              colorScheme="red"
-              variant="outline"
-              leftIcon={<Icon as={X} />}
-              onClick={() => handleStatusChange('in_progress', '驳回，需重新处理')}
-            >
-              驳回
-            </Button>
-            <Divider />
-            <Button
-              leftIcon={<Merge size={16} />}
-              variant="outline"
-              colorScheme="purple"
-              onClick={onOpen}
-              size="sm"
-            >
-              合并其他工单
-            </Button>
-          </VStack>
-        )
-      case 'closed':
-        return (
-          <VStack align="stretch" spacing={3}>
-            <Text fontSize="sm" color="gray.500" textAlign="center" py={2}>已关闭</Text>
-            <Button
-              leftIcon={<Merge size={16} />}
-              variant="outline"
-              colorScheme="purple"
-              onClick={onOpen}
-              size="sm"
-            >
-              合并其他工单
-            </Button>
-          </VStack>
-        )
-      case 'rejected':
-        return (
-          <VStack align="stretch" spacing={3}>
-            <Button
-              colorScheme="orange"
-              leftIcon={<Icon as={RotateCcw} />}
-              onClick={() => handleStatusChange('in_progress', '重新处理工单')}
-              w="full"
-            >
-              重新处理
-            </Button>
-            <Button
-              leftIcon={<Merge size={16} />}
-              variant="outline"
-              colorScheme="purple"
-              onClick={onOpen}
-              size="sm"
-            >
-              合并其他工单
-            </Button>
-          </VStack>
-        )
-      default:
-        return null
-    }
+            </VStack>
+          )
+        case 'in_progress':
+          return (
+            <VStack align="stretch" spacing={3}>
+              <Button
+                colorScheme="blue"
+                leftIcon={<Icon as={Check} />}
+                onClick={() => handleStatusChange('waiting_confirmation', '提交待确认')}
+              >
+                提交待确认
+              </Button>
+              <Divider />
+              <HStack spacing={1} mb={-2}>
+                <Icon as={MessageSquare} size={14} color="#2D3748" />
+                <Text fontSize="sm" fontWeight="600" color="#2D3748">添加备注</Text>
+              </HStack>
+              <Textarea
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                placeholder="输入备注内容..."
+                borderRadius="8px"
+                rows={3}
+              />
+              <AttachmentUploader
+                value={commentAttachments}
+                onChange={setCommentAttachments}
+                maxFiles={5}
+              />
+              <Button
+                colorScheme="gray"
+                leftIcon={<Icon as={MessageSquare} />}
+                onClick={handleAddComment}
+                size="sm"
+                isDisabled={!comment.trim() && commentAttachments.length === 0}
+              >
+                提交备注
+              </Button>
+              <Divider />
+              <Button
+                leftIcon={<Merge size={16} />}
+                variant="outline"
+                colorScheme="purple"
+                onClick={onOpen}
+                size="sm"
+              >
+                合并其他工单
+              </Button>
+            </VStack>
+          )
+        case 'waiting_confirmation':
+          return (
+            <VStack align="stretch" spacing={3}>
+              <Button
+                colorScheme="green"
+                leftIcon={<Icon as={Check} />}
+                onClick={() => handleStatusChange('closed', '确认完成')}
+              >
+                确认完成
+              </Button>
+              <Button
+                colorScheme="red"
+                variant="outline"
+                leftIcon={<Icon as={X} />}
+                onClick={() => handleStatusChange('in_progress', '驳回，需重新处理')}
+              >
+                驳回
+              </Button>
+              <Divider />
+              <Button
+                leftIcon={<Merge size={16} />}
+                variant="outline"
+                colorScheme="purple"
+                onClick={onOpen}
+                size="sm"
+              >
+                合并其他工单
+              </Button>
+            </VStack>
+          )
+        case 'closed':
+          return (
+            <VStack align="stretch" spacing={3}>
+              <Text fontSize="sm" color="gray.500" textAlign="center" py={2}>已关闭</Text>
+              <Button
+                leftIcon={<Merge size={16} />}
+                variant="outline"
+                colorScheme="purple"
+                onClick={onOpen}
+                size="sm"
+              >
+                合并其他工单
+              </Button>
+            </VStack>
+          )
+        case 'rejected':
+          return (
+            <VStack align="stretch" spacing={3}>
+              <Button
+                colorScheme="orange"
+                leftIcon={<Icon as={RotateCcw} />}
+                onClick={() => handleStatusChange('in_progress', '重新处理工单')}
+                w="full"
+              >
+                重新处理
+              </Button>
+              <Button
+                leftIcon={<Merge size={16} />}
+                variant="outline"
+                colorScheme="purple"
+                onClick={onOpen}
+                size="sm"
+              >
+                合并其他工单
+              </Button>
+            </VStack>
+          )
+        default:
+          return null
+      }
+    })()
+
+    const adminActions = isAdmin && !isDeleted && (
+      <VStack align="stretch" spacing={3}>
+        <Divider />
+        <Text fontSize="xs" fontWeight="600" color="gray.500" textTransform="uppercase" letterSpacing="wider">
+          管理员操作
+        </Text>
+        <Button
+          leftIcon={<Icon as={Trash2} size={16} />}
+          variant="outline"
+          colorScheme="red"
+          onClick={onDeleteOpen}
+          size="sm"
+          isDisabled={isMerged}
+        >
+          删除工单
+        </Button>
+        <Button
+          leftIcon={<Icon as={Archive} size={16} />}
+          variant="outline"
+          colorScheme="gray"
+          onClick={onArchiveOpen}
+          size="sm"
+          isDisabled={!canArchive || isMerged}
+        >
+          归档工单
+        </Button>
+      </VStack>
+    )
+
+    const statusBadges = (isDeleted || isArchived) && (
+      <VStack align="stretch" spacing={2}>
+        {isDeleted && (
+          <Card borderRadius="8px" bg="red.50" border="1px solid" borderColor="red.200">
+            <CardBody py={2} px={3}>
+              <HStack spacing={2}>
+                <Icon as={Trash2} color="red.500" boxSize={4} />
+                <Text fontSize="xs" color="red.600" fontWeight="500">
+                  已删除 · {formatDateTime(ticket.deletedAt!)}
+                </Text>
+              </HStack>
+            </CardBody>
+          </Card>
+        )}
+        {isArchived && (
+          <Card borderRadius="8px" bg="gray.100" border="1px solid" borderColor="gray.300">
+            <CardBody py={2} px={3}>
+              <HStack spacing={2}>
+                <Icon as={Archive} color="gray.500" boxSize={4} />
+                <Text fontSize="xs" color="gray.600" fontWeight="500">
+                  已归档 · {formatDateTime(ticket.archivedAt!)}
+                </Text>
+              </HStack>
+            </CardBody>
+          </Card>
+        )}
+      </VStack>
+    )
+
+    return (
+      <VStack align="stretch" spacing={3}>
+        {statusBadges}
+        {statusActions}
+        {adminActions}
+      </VStack>
+    )
   }
 
   return (
@@ -1146,6 +1251,88 @@ export default function TicketDetail() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <AlertDialog isOpen={isDeleteOpen} onClose={onDeleteClose} leastDestructiveRef={undefined}>
+        <AlertDialogOverlay>
+          <AlertDialogContent borderRadius="12px">
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              删除工单
+            </AlertDialogHeader>
+            <AlertDialogCloseButton />
+            <AlertDialogBody>
+              <VStack align="stretch" spacing={3}>
+                <HStack>
+                  <Icon as={AlertTriangle} color="red.500" boxSize={6} />
+                  <Text fontSize="sm">
+                    确定要删除工单 <Badge colorScheme="red">{ticket?.id}</Badge> 吗？
+                  </Text>
+                </HStack>
+                <Card borderRadius="8px" bg="red.50" border="1px solid" borderColor="red.200">
+                  <CardBody py={3} px={4}>
+                    <VStack align="stretch" spacing={1}>
+                      <Text fontSize="xs" fontWeight="600" color="red.700">
+                        此操作将工单移入回收站
+                      </Text>
+                      <Text fontSize="xs" color="red.600">
+                        工单将在回收站保留 30 天，期间管理员可恢复。30 天后将被永久删除。
+                      </Text>
+                    </VStack>
+                  </CardBody>
+                </Card>
+              </VStack>
+            </AlertDialogBody>
+            <AlertDialogFooter>
+              <Button variant="ghost" onClick={onDeleteClose} mr={3}>
+                取消
+              </Button>
+              <Button colorScheme="red" onClick={handleSoftDelete} leftIcon={<Icon as={Trash2} size={16} />}>
+                确认删除
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
+      <AlertDialog isOpen={isArchiveOpen} onClose={onArchiveClose} leastDestructiveRef={undefined}>
+        <AlertDialogOverlay>
+          <AlertDialogContent borderRadius="12px">
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              归档工单
+            </AlertDialogHeader>
+            <AlertDialogCloseButton />
+            <AlertDialogBody>
+              <VStack align="stretch" spacing={3}>
+                <HStack>
+                  <Icon as={Archive} color="gray.500" boxSize={6} />
+                  <Text fontSize="sm">
+                    确定要归档工单 <Badge colorScheme="gray">{ticket?.id}</Badge> 吗？
+                  </Text>
+                </HStack>
+                <Card borderRadius="8px" bg="gray.50" border="1px solid" borderColor="gray.200">
+                  <CardBody py={3} px={4}>
+                    <VStack align="stretch" spacing={1}>
+                      <Text fontSize="xs" fontWeight="600" color="gray.700">
+                        归档后工单将从主列表中隐藏
+                      </Text>
+                      <Text fontSize="xs" color="gray.600">
+                        归档的工单可在"归档工单"页面查看和取消归档。已关闭超过 90 天的工单会被自动归档。
+                      </Text>
+                    </VStack>
+                  </CardBody>
+                </Card>
+              </VStack>
+            </AlertDialogBody>
+            <AlertDialogFooter>
+              <Button variant="ghost" onClick={onArchiveClose} mr={3}>
+                取消
+              </Button>
+              <Button colorScheme="gray" onClick={handleArchive} leftIcon={<Icon as={Archive} size={16} />}>
+                确认归档
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
     </VStack>
   )
 }

@@ -16,6 +16,8 @@ import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail'
 import KnowledgeEdit from '@/pages/Knowledge/KnowledgeEdit'
 import Reports from '@/pages/Reports/Reports'
 import SLAManage from '@/pages/SLAManage/SLAManage'
+import RecycleBin from '@/pages/RecycleBin/RecycleBin'
+import ArchivedTickets from '@/pages/ArchivedTickets/ArchivedTickets'
 import { useUserStore } from '@/store/userStore'
 import { useTicketStore } from '@/store/ticketStore'
 import { useTemplateStore } from '@/store/templateStore'
@@ -40,6 +42,8 @@ export default function App() {
   const initAnnouncements = useAnnouncementStore((s) => s.initialize)
   const initSLA = useSLAStore((s) => s.initialize)
   const processDueTickets = useScheduledTicketStore((s) => s.processDueTickets)
+  const cleanupExpiredDeletedTickets = useTicketStore((s) => s.cleanupExpiredDeletedTickets)
+  const autoArchiveOldTickets = useTicketStore((s) => s.autoArchiveOldTickets)
   const renewSession = useUserStore((s) => s.renewSession)
 
   useEffect(() => {
@@ -55,11 +59,23 @@ export default function App() {
     initAnnouncements()
     initSLA()
     processDueTickets()
-    const interval = setInterval(() => {
+    cleanupExpiredDeletedTickets()
+    autoArchiveOldTickets()
+
+    const processInterval = setInterval(() => {
       processDueTickets()
     }, 30000)
-    return () => clearInterval(interval)
-  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, initTags, initAnnouncements, initSLA, processDueTickets])
+
+    const maintenanceInterval = setInterval(() => {
+      cleanupExpiredDeletedTickets()
+      autoArchiveOldTickets()
+    }, 60000)
+
+    return () => {
+      clearInterval(processInterval)
+      clearInterval(maintenanceInterval)
+    }
+  }, [initAuth, initUsers, initTickets, initTemplates, initNotifications, initScheduled, initDepartments, initKnowledge, initTags, initAnnouncements, initSLA, processDueTickets, cleanupExpiredDeletedTickets, autoArchiveOldTickets])
 
   useEffect(() => {
     const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
@@ -93,6 +109,8 @@ export default function App() {
           <Route path="tickets/import" element={<TicketImport />} />
           <Route path="tickets/:id" element={<TicketDetail />} />
           <Route path="scheduled-tickets" element={<ScheduledTickets />} />
+          <Route path="recycle-bin" element={<RecycleBin />} />
+          <Route path="archived-tickets" element={<ArchivedTickets />} />
           <Route path="announcements" element={<AnnouncementManage />} />
           <Route path="templates" element={<TemplateManage />} />
           <Route path="knowledge" element={<KnowledgeList />} />

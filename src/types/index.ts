@@ -55,6 +55,10 @@ export interface Ticket {
   mergedToId: string | null
   mergedTicketIds: string[]
   relatedTicketIds: string[]
+  deletedAt: string | null
+  deletedBy: string | null
+  archivedAt: string | null
+  archivedBy: string | null
 }
 
 export interface Attachment {
