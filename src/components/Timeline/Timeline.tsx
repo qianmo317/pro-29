@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { VStack, HStack, Text, Box } from '@chakra-ui/react'
 import type { TicketRecord, User } from '@/types'
+import { useTicketStore } from '@/store/ticketStore'
+import AttachmentList from '@/components/AttachmentList/AttachmentList'
 
 const ACTION_COLORS: Record<string, string> = {
   created: '#00B894',
@@ -45,6 +47,7 @@ interface TimelineProps {
 
 export default function Timeline({ records, users }: TimelineProps) {
   const [selectedAction, setSelectedAction] = useState<string>('all')
+  const getAttachmentsByRecordId = useTicketStore((s) => s.getAttachmentsByRecordId)
   const userMap = new Map(users.map(u => [u.id, u]))
   const sorted = useMemo(
     () => [...records].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
@@ -183,6 +186,7 @@ export default function Timeline({ records, users }: TimelineProps) {
                 <Text fontSize="sm" color="#718096" mb={1}>
                   {record.content}
                 </Text>
+                <AttachmentList attachments={getAttachmentsByRecordId(record.id)} />
                 <Text fontSize="xs" color="#A0AEC0">
                   {formatTimestamp(record.createdAt)}
                 </Text>

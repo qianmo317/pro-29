@@ -38,6 +38,9 @@ import SLAIndicator from '@/components/SLAIndicator/SLAIndicator'
 import Timeline from '@/components/Timeline/Timeline'
 import TagBadge from '@/components/TagBadge/TagBadge'
 import TagSelect from '@/components/TagSelect/TagSelect'
+import AttachmentUploader from '@/components/AttachmentUploader/AttachmentUploader'
+import type { PendingAttachment } from '@/components/AttachmentUploader/AttachmentUploader'
+import AttachmentList from '@/components/AttachmentList/AttachmentList'
 import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS, MAX_RATING, RATING_LABELS } from '@/types'
 import { type TicketStatus, type TicketCategory, type TicketPriority } from '@/types'
 import { FormControl, FormLabel, FormErrorMessage } from '@chakra-ui/react'
@@ -75,6 +78,7 @@ export default function TicketDetail() {
   const [assigneeId, setAssigneeId] = useState('')
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
   const [comment, setComment] = useState('')
+  const [commentAttachments, setCommentAttachments] = useState<PendingAttachment[]>([])
   const [mergeSearch, setMergeSearch] = useState('')
   const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([])
 
@@ -240,12 +244,25 @@ export default function TicketDetail() {
   }
 
   const handleAddComment = () => {
-    if (!comment.trim() || isMerged) {
-      toast({ title: '请输入备注内容', status: 'warning', duration: 2000 })
+    if (!comment.trim() && commentAttachments.length === 0) {
+      toast({ title: '请输入备注内容或上传附件', status: 'warning', duration: 2000 })
       return
     }
-    ticketStore.addRecord(ticket.id, currentUser.id, 'comment', comment.trim())
+    if (isMerged) return
+    ticketStore.addRecord(
+      ticket.id,
+      currentUser.id,
+      'comment',
+      comment.trim() || '添加了附件',
+      commentAttachments.map(a => ({
+        fileName: a.fileName,
+        fileSize: a.fileSize,
+        mimeType: a.mimeType,
+        data: a.data,
+      }))
+    )
     setComment('')
+    setCommentAttachments([])
     toast({ title: '备注已添加', status: 'success', duration: 2000 })
   }
 
@@ -437,7 +454,10 @@ export default function TicketDetail() {
               提交待确认
             </Button>
             <Divider />
-            <Text fontSize="sm" fontWeight="600" color="#2D3748">添加备注</Text>
+            <HStack spacing={1} mb={-2}>
+              <Icon as={MessageSquare} size={14} color="#2D3748" />
+              <Text fontSize="sm" fontWeight="600" color="#2D3748">添加备注</Text>
+            </HStack>
             <Textarea
               value={comment}
               onChange={e => setComment(e.target.value)}
@@ -445,11 +465,17 @@ export default function TicketDetail() {
               borderRadius="8px"
               rows={3}
             />
+            <AttachmentUploader
+              value={commentAttachments}
+              onChange={setCommentAttachments}
+              maxFiles={5}
+            />
             <Button
               colorScheme="gray"
               leftIcon={<Icon as={MessageSquare} />}
               onClick={handleAddComment}
               size="sm"
+              isDisabled={!comment.trim() && commentAttachments.length === 0}
             >
               提交备注
             </Button>
@@ -704,6 +730,11 @@ export default function TicketDetail() {
                     {ticket.description}
                   </Text>
                 </Box>
+
+                <AttachmentList
+                  attachments={ticketStore.getAllTicketAttachments(ticket.id)}
+                  title="全部附件"
+                />
               </VStack>
             </CardBody>
           </Card>

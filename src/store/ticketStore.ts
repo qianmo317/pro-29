@@ -10,12 +10,20 @@ import type {
   ImportResult,
   ImportResultItem,
   BatchOperationResult,
+  Attachment,
 } from '@/types'
 import { CATEGORY_LABELS, PRIORITY_LABELS } from '@/types'
 import { MOCK_TICKETS, MOCK_RECORDS, MOCK_EVALUATIONS } from '@/utils/mockData'
 import { getSLADeadline } from '@/utils/slaUtils'
 import { saveToStorage, loadFromStorage } from '@/utils/storage'
 import { useNotificationStore } from './notificationStore'
+
+export interface AttachmentInput {
+  fileName: string
+  fileSize: number
+  mimeType: string
+  data: string
+}
 
 interface EditableTicketFields {
   title: string
@@ -29,15 +37,16 @@ interface TicketState {
   tickets: Ticket[]
   records: TicketRecord[]
   evaluations: TicketEvaluation[]
+  attachments: Attachment[]
   nextId: number
   initialize: () => void
-  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds' | 'tags'> & { tags?: string[] }) => Ticket
+  addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds' | 'tags'> & { tags?: string[] }, attachments?: AttachmentInput[]) => Ticket
   updateTicket: (id: string, updates: Partial<Ticket>) => void
   editTicket: (id: string, updates: EditableTicketFields, operatorId: string) => void
   assignTicket: (id: string, assigneeId: string, operatorId: string) => void
   assignDepartment: (id: string, departmentId: string, operatorId: string) => void
   changeStatus: (id: string, status: TicketStatus, operatorId: string, content: string) => void
-  addRecord: (ticketId: string, operatorId: string, action: string, content: string) => void
+  addRecord: (ticketId: string, operatorId: string, action: string, content: string, attachments?: AttachmentInput[]) => void
   getTicketById: (id: string) => Ticket | undefined
   getRecordsByTicketId: (id: string) => TicketRecord[]
   getFilteredTickets: (filters: TicketFilters, users?: { id: string; name: string }[]) => Ticket[]
@@ -79,6 +88,11 @@ interface TicketState {
   removeTag: (tagId: string) => void
   batchAssignTickets: (ticketIds: string[], assigneeId: string, operatorId: string) => BatchOperationResult
   batchCloseTickets: (ticketIds: string[], operatorId: string, content: string) => BatchOperationResult
+  getAttachmentsByTicketId: (ticketId: string) => Attachment[]
+  getAttachmentsByRecordId: (recordId: string) => Attachment[]
+  getAttachmentById: (attachmentId: string) => Attachment | undefined
+  getAllTicketAttachments: (ticketId: string) => Attachment[]
+  downloadAttachment: (attachmentId: string) => void
 }
 
 export interface TicketFilters {
@@ -93,18 +107,48 @@ export interface TicketFilters {
 const STORAGE_KEY_TICKETS = 'tickets'
 const STORAGE_KEY_RECORDS = 'records'
 const STORAGE_KEY_EVALUATIONS = 'evaluations'
+const STORAGE_KEY_ATTACHMENTS = 'attachments'
 const STORAGE_KEY_NEXT_ID = 'next_id'
+
+function createAttachments(
+  inputs: AttachmentInput[],
+  ticketId: string,
+  recordId: string | null,
+  uploaderId: string
+): Attachment[] {
+  const now = new Date().toISOString()
+  return inputs.map((input, index) => ({
+    id: `att_${Date.now()}_${index}`,
+    fileName: input.fileName,
+    fileSize: input.fileSize,
+    mimeType: input.mimeType,
+    data: input.data,
+    ticketId,
+    recordId,
+    uploaderId,
+    createdAt: now,
+  }))
+}
+
+function normalizeRecord(record: TicketRecord): TicketRecord {
+  return {
+    ...record,
+    attachmentIds: record.attachmentIds ?? [],
+  }
+}
 
 export const useTicketStore = create<TicketState>((set, get) => ({
   tickets: MOCK_TICKETS,
-  records: MOCK_RECORDS,
+  records: MOCK_RECORDS.map(normalizeRecord),
   evaluations: MOCK_EVALUATIONS,
+  attachments: [],
   nextId: 13,
 
   initialize: () => {
     const savedTickets = loadFromStorage<Ticket[]>(STORAGE_KEY_TICKETS)
     const savedRecords = loadFromStorage<TicketRecord[]>(STORAGE_KEY_RECORDS)
     const savedEvaluations = loadFromStorage<TicketEvaluation[]>(STORAGE_KEY_EVALUATIONS)
+    const savedAttachments = loadFromStorage<Attachment[]>(STORAGE_KEY_ATTACHMENTS)
     const savedNextId = loadFromStorage<number>(STORAGE_KEY_NEXT_ID)
     if (savedTickets) {
       const normalizedTickets = savedTickets.map(t => ({
@@ -116,15 +160,21 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       }))
       set({ tickets: normalizedTickets })
     }
-    if (savedRecords) set({ records: savedRecords })
+    if (savedRecords) set({ records: savedRecords.map(normalizeRecord) })
     if (savedEvaluations) set({ evaluations: savedEvaluations })
+    if (savedAttachments) set({ attachments: savedAttachments })
     if (savedNextId) set({ nextId: savedNextId })
   },
 
-  addTicket: (ticketData) => {
+  addTicket: (ticketData, attachmentInputs = []) => {
     const { nextId } = get()
     const id = `TK-${String(nextId).padStart(3, '0')}`
     const now = new Date().toISOString()
+
+    const newRecordId = `r_${Date.now()}`
+    const newAttachments = createAttachments(attachmentInputs, id, newRecordId, ticketData.creatorId)
+    const newAttachmentIds = newAttachments.map(a => a.id)
+
     const newTicket: Ticket = {
       ...ticketData,
       id,
@@ -138,20 +188,23 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       tags: ticketData.tags ?? [],
     }
     const newRecord: TicketRecord = {
-      id: `r_${Date.now()}`,
+      id: newRecordId,
       ticketId: id,
       operatorId: ticketData.creatorId,
       action: 'created',
       content: ticketData.departmentId ? '创建工单，已指派部门' : '创建工单',
       createdAt: now,
+      attachmentIds: newAttachmentIds,
     }
     set((state) => {
       const tickets = [newTicket, ...state.tickets]
       const records = [newRecord, ...state.records]
+      const attachments = [...newAttachments, ...state.attachments]
       saveToStorage(STORAGE_KEY_TICKETS, tickets)
       saveToStorage(STORAGE_KEY_RECORDS, records)
+      saveToStorage(STORAGE_KEY_ATTACHMENTS, attachments)
       saveToStorage(STORAGE_KEY_NEXT_ID, nextId + 1)
-      return { tickets, records, nextId: nextId + 1 }
+      return { tickets, records, attachments, nextId: nextId + 1 }
     })
     return newTicket
   },
@@ -191,6 +244,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       action: 'edited',
       content: `编辑工单：${changes.join('；')}`,
       createdAt: now,
+      attachmentIds: [],
     }
 
     set((state) => {
@@ -225,6 +279,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       action: 'assigned',
       content: `分配处理人`,
       createdAt: now,
+      attachmentIds: [],
     }
     set((state) => {
       const tickets = state.tickets.map(t =>
@@ -248,6 +303,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       action: 'department_assigned',
       content: `指派到部门`,
       createdAt: now,
+      attachmentIds: [],
     }
     set((state) => {
       const tickets = state.tickets.map(t =>
@@ -272,6 +328,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       action: 'status_changed',
       content,
       createdAt: now,
+      attachmentIds: [],
     }
     set((state) => {
       const tickets = state.tickets.map(t =>
@@ -285,25 +342,31 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     useNotificationStore.getState().createNotificationsForFollowers(id, record, operatorId)
   },
 
-  addRecord: (ticketId, operatorId, action, content) => {
+  addRecord: (ticketId, operatorId, action, content, attachmentInputs = []) => {
     if (get().isTicketMerged(ticketId)) return
     const now = new Date().toISOString()
+    const recordId = `r_${Date.now()}`
+    const newAttachments = createAttachments(attachmentInputs, ticketId, recordId, operatorId)
+    const newAttachmentIds = newAttachments.map(a => a.id)
     const record: TicketRecord = {
-      id: `r_${Date.now()}`,
+      id: recordId,
       ticketId,
       operatorId,
       action,
       content,
       createdAt: now,
+      attachmentIds: newAttachmentIds,
     }
     set((state) => {
       const records = [record, ...state.records]
       const tickets = state.tickets.map(t =>
         t.id === ticketId ? { ...t, updatedAt: now } : t
       )
+      const attachments = [...newAttachments, ...state.attachments]
       saveToStorage(STORAGE_KEY_RECORDS, records)
       saveToStorage(STORAGE_KEY_TICKETS, tickets)
-      return { records, tickets }
+      saveToStorage(STORAGE_KEY_ATTACHMENTS, attachments)
+      return { records, tickets, attachments }
     })
     useNotificationStore.getState().createNotificationsForFollowers(ticketId, record, operatorId)
   },
@@ -371,6 +434,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       action: 'evaluated',
       content: `提交评价：${rating} 星${comment.trim() ? `，${comment.trim()}` : ''}`,
       createdAt: now,
+      attachmentIds: [],
     }
     set((state) => {
       const evaluations = [evaluation, ...state.evaluations]
@@ -659,6 +723,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       action: 'merged',
       content: `合并工单：${validMergedIds.join('、')}`,
       createdAt: now,
+      attachmentIds: [],
     }
     newRecords.push(mergeRecord)
 
@@ -670,6 +735,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
         action: 'merged_to',
         content: `已合并到主工单 ${mainTicketId}`,
         createdAt: now,
+        attachmentIds: [],
       }
       newRecords.push(mergedRecord)
     })
@@ -695,11 +761,18 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       })
 
       const records = [...newRecords, ...state.records]
+      const attachments = state.attachments.map(a => {
+        if (validMergedIds.includes(a.ticketId)) {
+          return { ...a, ticketId: mainTicketId }
+        }
+        return a
+      })
 
       saveToStorage(STORAGE_KEY_TICKETS, tickets)
       saveToStorage(STORAGE_KEY_RECORDS, records)
+      saveToStorage(STORAGE_KEY_ATTACHMENTS, attachments)
 
-      return { tickets, records }
+      return { tickets, records, attachments }
     })
 
     useNotificationStore.getState().createNotificationsForFollowers(mainTicketId, mergeRecord, operatorId)
@@ -760,6 +833,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
         action: 'assigned',
         content: '批量分配处理人',
         createdAt: now,
+        attachmentIds: [],
       })
     })
 
@@ -821,6 +895,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
         action: 'status_changed',
         content: content.trim() ? `批量关闭：${content.trim()}` : '批量关闭工单',
         createdAt: now,
+        attachmentIds: [],
       })
     })
 
@@ -848,5 +923,46 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       failed: failedItems.length,
       failedItems,
     }
+  },
+
+  getAttachmentsByTicketId: (ticketId) => {
+    return get().attachments.filter(a => a.ticketId === ticketId)
+  },
+
+  getAttachmentsByRecordId: (recordId) => {
+    return get().attachments.filter(a => a.recordId === recordId)
+  },
+
+  getAttachmentById: (attachmentId) => {
+    return get().attachments.find(a => a.id === attachmentId)
+  },
+
+  getAllTicketAttachments: (ticketId) => {
+    const ticket = get().getTicketById(ticketId)
+    let ticketIds = [ticketId]
+    if (ticket && (ticket.mergedTicketIds ?? []).length > 0) {
+      ticketIds = [...ticketIds, ...(ticket.mergedTicketIds ?? [])]
+    }
+    return get().attachments.filter(a => ticketIds.includes(a.ticketId))
+  },
+
+  downloadAttachment: (attachmentId) => {
+    const att = get().getAttachmentById(attachmentId)
+    if (!att) return
+    const byteChars = atob(att.data.split(',')[1] || att.data)
+    const byteNumbers = new Array(byteChars.length)
+    for (let i = 0; i < byteChars.length; i++) {
+      byteNumbers[i] = byteChars.charCodeAt(i)
+    }
+    const byteArray = new Uint8Array(byteNumbers)
+    const blob = new Blob([byteArray], { type: att.mimeType })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = att.fileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   },
 }))

@@ -56,6 +56,18 @@ export interface Ticket {
   mergedTicketIds: string[]
 }
 
+export interface Attachment {
+  id: string
+  fileName: string
+  fileSize: number
+  mimeType: string
+  data: string
+  ticketId: string
+  recordId: string | null
+  uploaderId: string
+  createdAt: string
+}
+
 export interface TicketRecord {
   id: string
   ticketId: string
@@ -63,6 +75,7 @@ export interface TicketRecord {
   action: string
   content: string
   createdAt: string
+  attachmentIds: string[]
 }
 
 export interface TicketEvaluation {

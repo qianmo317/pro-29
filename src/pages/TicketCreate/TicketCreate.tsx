@@ -28,8 +28,10 @@ import {
   PopoverArrow,
   Stack,
 } from '@chakra-ui/react'
-import { ArrowLeft, Send, BookOpen, FileText, ChevronDown, CalendarClock } from 'lucide-react'
+import { ArrowLeft, Send, BookOpen, FileText, ChevronDown, CalendarClock, Paperclip } from 'lucide-react'
 import TagSelect from '@/components/TagSelect/TagSelect'
+import AttachmentUploader from '@/components/AttachmentUploader/AttachmentUploader'
+import type { PendingAttachment } from '@/components/AttachmentUploader/AttachmentUploader'
 import { useTicketStore } from '@/store/ticketStore'
 import { useScheduledTicketStore } from '@/store/scheduledTicketStore'
 import { useUserStore } from '@/store/userStore'
@@ -62,6 +64,7 @@ export default function TicketCreate() {
   const [selectedTemplate, setSelectedTemplate] = useState<TicketTemplate | null>(null)
   const [createMode, setCreateMode] = useState<'immediate' | 'scheduled'>('immediate')
   const [scheduledTime, setScheduledTime] = useState('')
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([])
 
   const agents = useMemo(() => {
     if (departmentId) {
@@ -170,17 +173,25 @@ export default function TicketCreate() {
       return
     }
 
-    const newTicket = addTicket({
-      title: title.trim(),
-      description: description.trim(),
-      category,
-      priority,
-      creatorId: currentUser.id,
-      assigneeId: assigneeId || null,
-      departmentId: departmentId || null,
-      tags: tagIds,
-      knowledgeId: null,
-    })
+    const newTicket = addTicket(
+      {
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        priority,
+        creatorId: currentUser.id,
+        assigneeId: assigneeId || null,
+        departmentId: departmentId || null,
+        tags: tagIds,
+        knowledgeId: null,
+      },
+      attachments.map(a => ({
+        fileName: a.fileName,
+        fileSize: a.fileSize,
+        mimeType: a.mimeType,
+        data: a.data,
+      }))
+    )
 
     toast({
       title: '工单创建成功',
@@ -395,6 +406,21 @@ export default function TicketCreate() {
                     系统将在该时间点自动创建工单，预约期间可在「预约工单」中查看或取消
                   </Text>
                   {scheduledTimeError && <FormErrorMessage>{scheduledTimeError}</FormErrorMessage>}
+                </FormControl>
+              )}
+
+              {createMode === 'immediate' && (
+                <FormControl>
+                  <FormLabel>
+                    <HStack spacing={1}>
+                      <Paperclip size={14} color="gray.500" />
+                      <Text>附件</Text>
+                      <Text as="span" fontSize="xs" color="gray.400" fontWeight="normal">
+                        （可选，支持图片、文档等）
+                      </Text>
+                    </HStack>
+                  </FormLabel>
+                  <AttachmentUploader value={attachments} onChange={setAttachments} />
                 </FormControl>
               )}
 
