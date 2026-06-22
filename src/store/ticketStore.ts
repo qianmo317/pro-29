@@ -11,9 +11,10 @@ import type {
   ImportResultItem,
   BatchOperationResult,
   Attachment,
+  TicketComment,
 } from '@/types'
 import { CATEGORY_LABELS, PRIORITY_LABELS } from '@/types'
-import { MOCK_TICKETS, MOCK_RECORDS, MOCK_EVALUATIONS } from '@/utils/mockData'
+import { MOCK_TICKETS, MOCK_RECORDS, MOCK_EVALUATIONS, MOCK_COMMENTS } from '@/utils/mockData'
 import { getSLADeadline, getSLARemaining } from '@/utils/slaUtils'
 import { saveToStorage, loadFromStorage } from '@/utils/storage'
 import { useNotificationStore } from './notificationStore'
@@ -38,6 +39,7 @@ interface TicketState {
   records: TicketRecord[]
   evaluations: TicketEvaluation[]
   attachments: Attachment[]
+  comments: TicketComment[]
   nextId: number
   initialize: () => void
   addTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'slaDeadline' | 'status' | 'mergedToId' | 'mergedTicketIds' | 'relatedTicketIds' | 'tags'> & { tags?: string[] }, attachments?: AttachmentInput[]) => Ticket
@@ -96,6 +98,11 @@ interface TicketState {
   addRelatedTicket: (ticketId: string, relatedId: string, operatorId: string) => boolean
   removeRelatedTicket: (ticketId: string, relatedId: string, operatorId: string) => void
   getRelatedTickets: (ticketId: string) => Ticket[]
+  getCommentsByTicketId: (ticketId: string) => TicketComment[]
+  addComment: (ticketId: string, authorId: string, content: string, parentId?: string | null, quotedRecordId?: string | null) => TicketComment
+  updateComment: (commentId: string, content: string, operatorId: string) => void
+  deleteComment: (commentId: string, operatorId: string) => boolean
+  getCommentById: (commentId: string) => TicketComment | undefined
 }
 
 export interface TicketFilters {
@@ -115,6 +122,7 @@ const STORAGE_KEY_TICKETS = 'tickets'
 const STORAGE_KEY_RECORDS = 'records'
 const STORAGE_KEY_EVALUATIONS = 'evaluations'
 const STORAGE_KEY_ATTACHMENTS = 'attachments'
+const STORAGE_KEY_COMMENTS = 'comments'
 const STORAGE_KEY_NEXT_ID = 'next_id'
 
 function createAttachments(
@@ -149,6 +157,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   records: MOCK_RECORDS.map(normalizeRecord),
   evaluations: MOCK_EVALUATIONS,
   attachments: [],
+  comments: MOCK_COMMENTS,
   nextId: 13,
 
   initialize: () => {
@@ -156,6 +165,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     const savedRecords = loadFromStorage<TicketRecord[]>(STORAGE_KEY_RECORDS)
     const savedEvaluations = loadFromStorage<TicketEvaluation[]>(STORAGE_KEY_EVALUATIONS)
     const savedAttachments = loadFromStorage<Attachment[]>(STORAGE_KEY_ATTACHMENTS)
+    const savedComments = loadFromStorage<TicketComment[]>(STORAGE_KEY_COMMENTS)
     const savedNextId = loadFromStorage<number>(STORAGE_KEY_NEXT_ID)
     if (savedTickets) {
       const normalizedTickets = savedTickets.map(t => ({
@@ -171,6 +181,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     if (savedRecords) set({ records: savedRecords.map(normalizeRecord) })
     if (savedEvaluations) set({ evaluations: savedEvaluations })
     if (savedAttachments) set({ attachments: savedAttachments })
+    if (savedComments) set({ comments: savedComments })
     if (savedNextId) set({ nextId: savedNextId })
   },
 
@@ -1105,5 +1116,75 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     return (ticket.relatedTicketIds ?? [])
       .map(id => get().getTicketById(id))
       .filter((t): t is Ticket => t !== undefined)
+  },
+
+  getCommentsByTicketId: (ticketId) => {
+    return get().comments
+      .filter(c => c.ticketId === ticketId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  },
+
+  getCommentById: (commentId) => {
+    return get().comments.find(c => c.id === commentId)
+  },
+
+  addComment: (ticketId, authorId, content, parentId = null, quotedRecordId = null) => {
+    const now = new Date().toISOString()
+    const newComment: TicketComment = {
+      id: `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      ticketId,
+      authorId,
+      content: content.trim(),
+      parentId,
+      quotedRecordId,
+      createdAt: now,
+      updatedAt: now,
+    }
+    set((state) => {
+      const comments = [newComment, ...state.comments]
+      saveToStorage(STORAGE_KEY_COMMENTS, comments)
+      return { comments }
+    })
+    return newComment
+  },
+
+  updateComment: (commentId, content, operatorId) => {
+    const comment = get().getCommentById(commentId)
+    if (!comment || comment.authorId !== operatorId) return
+    const now = new Date().toISOString()
+    set((state) => {
+      const comments = state.comments.map(c =>
+        c.id === commentId
+          ? { ...c, content: content.trim(), updatedAt: now }
+          : c
+      )
+      saveToStorage(STORAGE_KEY_COMMENTS, comments)
+      return { comments }
+    })
+  },
+
+  deleteComment: (commentId, operatorId) => {
+    const comment = get().getCommentById(commentId)
+    if (!comment) return false
+    if (comment.authorId !== operatorId) {
+      return false
+    }
+    const idsToDelete = new Set<string>()
+    const collectChildIds = (parentId: string) => {
+      get().comments
+        .filter(c => c.parentId === parentId)
+        .forEach(child => {
+          idsToDelete.add(child.id)
+          collectChildIds(child.id)
+        })
+    }
+    idsToDelete.add(commentId)
+    collectChildIds(commentId)
+    set((state) => {
+      const comments = state.comments.filter(c => !idsToDelete.has(c.id))
+      saveToStorage(STORAGE_KEY_COMMENTS, comments)
+      return { comments }
+    })
+    return true
   },
 }))

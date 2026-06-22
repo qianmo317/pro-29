@@ -41,6 +41,7 @@ import TagSelect from '@/components/TagSelect/TagSelect'
 import AttachmentUploader from '@/components/AttachmentUploader/AttachmentUploader'
 import type { PendingAttachment } from '@/components/AttachmentUploader/AttachmentUploader'
 import AttachmentList from '@/components/AttachmentList/AttachmentList'
+import DiscussionSection from '@/components/DiscussionSection/DiscussionSection'
 import { CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_COLORS, MAX_RATING, RATING_LABELS } from '@/types'
 import { type TicketStatus, type TicketCategory, type TicketPriority } from '@/types'
 import { FormControl, FormLabel, FormErrorMessage } from '@chakra-ui/react'
@@ -886,6 +887,18 @@ export default function TicketDetail() {
             )}
           </Text>
           <Timeline records={records} users={users} />
+        </CardBody>
+      </Card>
+
+      <Card borderRadius="16px">
+        <CardBody p={6}>
+          <DiscussionSection
+            ticketId={ticket.id}
+            currentUser={currentUser}
+            users={users}
+            records={records}
+            isReadOnly={isMerged}
+          />
         </CardBody>
       </Card>
 

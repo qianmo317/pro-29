@@ -1,4 +1,4 @@
-import type { User, Ticket, TicketRecord, TicketEvaluation, KnowledgeArticle, SLAConfig, TicketTemplate, Department, Tag } from '@/types'
+import type { User, Ticket, TicketRecord, TicketEvaluation, KnowledgeArticle, SLAConfig, TicketTemplate, Department, Tag, TicketComment } from '@/types'
 
 export const MOCK_DEPARTMENTS: Department[] = [
   { id: 'd1', name: '网络组', description: '负责网络基础设施、VPN、WiFi等', color: '#3182CE' },
@@ -494,5 +494,68 @@ export const MOCK_TEMPLATES: TicketTemplate[] = [
     createdAt: h(240),
     updatedAt: h(120),
     creatorId: 'u1',
+  },
+]
+
+export const MOCK_COMMENTS: TicketComment[] = [
+  {
+    id: 'c1',
+    ticketId: 'TK-001',
+    authorId: 'u5',
+    content: '请问这个 VPN 问题大概什么时候能解决？我们团队有好几个同事都遇到了同样的问题。',
+    parentId: null,
+    quotedRecordId: null,
+    createdAt: h(60),
+    updatedAt: h(60),
+  },
+  {
+    id: 'c2',
+    ticketId: 'TK-001',
+    authorId: 'u2',
+    content: '您好，目前已经定位到是 VPN 服务器的内存泄漏问题，正在联系厂商技术支持，预计 1-2 个工作日内能给出修复方案。',
+    parentId: 'c1',
+    quotedRecordId: null,
+    createdAt: h(56),
+    updatedAt: h(56),
+  },
+  {
+    id: 'c3',
+    ticketId: 'TK-001',
+    authorId: 'u6',
+    content: '我也遇到了同样的问题，远程办公很受影响，希望能尽快修复！',
+    parentId: null,
+    quotedRecordId: null,
+    createdAt: h(40),
+    updatedAt: h(40),
+  },
+  {
+    id: 'c4',
+    ticketId: 'TK-001',
+    authorId: 'u2',
+    content: '好消息！厂商已经发布了补丁包，我已经在测试环境验证通过，预计今晚安排升级。',
+    parentId: null,
+    quotedRecordId: 'r3',
+    createdAt: h(8),
+    updatedAt: h(8),
+  },
+  {
+    id: 'c5',
+    ticketId: 'TK-004',
+    authorId: 'u5',
+    content: '邮件问题影响面很大，很多客户都在反馈收不到我们的邮件，麻烦加急处理一下。',
+    parentId: null,
+    quotedRecordId: null,
+    createdAt: h(28),
+    updatedAt: h(28),
+  },
+  {
+    id: 'c6',
+    ticketId: 'TK-004',
+    authorId: 'u4',
+    content: '收到，正在全力排查，目前发现是邮件队列堵塞导致的，正在清理中。',
+    parentId: 'c5',
+    quotedRecordId: 'r10',
+    createdAt: h(22),
+    updatedAt: h(22),
   },
 ]

@@ -79,6 +79,17 @@ export interface TicketRecord {
   attachmentIds: string[]
 }
 
+export interface TicketComment {
+  id: string
+  ticketId: string
+  authorId: string
+  content: string
+  parentId: string | null
+  quotedRecordId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface TicketEvaluation {
   id: string
   ticketId: string
