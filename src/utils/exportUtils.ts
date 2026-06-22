@@ -173,6 +173,7 @@ export interface ReportExportData {
   }[]
   trendData: { date: string; created: number; closed: number }[]
   categoryData: { name: string; value: number }[]
+  priorityData: { name: string; value: number; color: string }[]
   departmentChartData: { name: string; 总工单: number; 已解决: number; 处理中: number; 待处理: number }[]
   departmentPieData: { name: string; value: number }[]
   departmentStats: Array<{
@@ -252,6 +253,14 @@ export async function exportReportsToExcel(
   setColumnWidths(wsCategory, [15, 12])
   wsCategory['!autofilter'] = { ref: `A1:B${1 + categoryRows.length}` }
   XLSX.utils.book_append_sheet(wb, wsCategory, '分类数据')
+
+  const priorityHeaders = ['优先级', '工单数量']
+  const priorityRows = data.priorityData.map((d) => [d.name, d.value])
+  const prioritySheet = [priorityHeaders, ...priorityRows]
+  const wsPriority = XLSX.utils.aoa_to_sheet(prioritySheet)
+  setColumnWidths(wsPriority, [15, 12])
+  wsPriority['!autofilter'] = { ref: `A1:B${1 + priorityRows.length}` }
+  XLSX.utils.book_append_sheet(wb, wsPriority, '优先级数据')
 
   const deptChartHeaders = ['部门', '总工单', '已解决', '处理中', '待处理']
   const deptChartRows = data.departmentChartData.map((d) => [

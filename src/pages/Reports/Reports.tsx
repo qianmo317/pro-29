@@ -1,11 +1,11 @@
 import { Box, Card, CardBody, Heading, Text, SimpleGrid, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td, Icon, Progress, Tabs, TabList, Tab, TabPanels, TabPanel, Button, Spacer, Flex, useToast, Select, Input, Popover, PopoverTrigger, PopoverContent, PopoverBody, useDisclosure } from '@chakra-ui/react'
-import { TrendingUp, PieChart as PieChartIcon, Users, Clock, Star, Building2, Download, FileImage, Calendar } from 'lucide-react'
+import { TrendingUp, PieChart as PieChartIcon, Users, Clock, Star, Building2, Download, FileImage, Calendar, AlertCircle } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, LabelList } from 'recharts'
 import { useTicketStore } from '@/store/ticketStore'
 import { useUserStore } from '@/store/userStore'
 import { useDepartmentStore } from '@/store/departmentStore'
-import type { TicketCategory, TicketRecord, Ticket, TicketEvaluation } from '@/types'
-import { CATEGORY_LABELS, MAX_RATING } from '@/types'
+import type { TicketCategory, TicketRecord, Ticket, TicketEvaluation, TicketPriority } from '@/types'
+import { CATEGORY_LABELS, MAX_RATING, PRIORITY_LABELS, PRIORITY_COLORS } from '@/types'
 import { exportReportsToExcel, captureChartScreenshots, type ChartScreenshotResult } from '@/utils/exportUtils'
 import { useState, useMemo } from 'react'
 
@@ -266,6 +266,17 @@ function getCategoryData(tickets: { category: TicketCategory }[]) {
   return Object.entries(countMap).map(([name, value]) => ({ name, value }))
 }
 
+function getPriorityData(tickets: { priority: TicketPriority }[]) {
+  const priorityOrder: TicketPriority[] = ['critical', 'high', 'medium', 'low']
+  return priorityOrder
+    .map(p => ({
+      name: PRIORITY_LABELS[p],
+      value: tickets.filter(t => t.priority === p).length,
+      color: PRIORITY_COLORS[p],
+    }))
+    .filter(d => d.value > 0)
+}
+
 function getAgentPerformance(
   tickets: { id: string; assigneeId: string | null; status: string; updatedAt: string; createdAt: string; slaDeadline: string }[],
   records: TicketRecord[],
@@ -400,6 +411,11 @@ export default function Reports() {
     [filteredTickets]
   )
 
+  const priorityData = useMemo(
+    () => getPriorityData(filteredTickets),
+    [filteredTickets]
+  )
+
   const agents = users.filter(u => u.role === 'agent')
 
   const performanceData = useMemo(
@@ -477,6 +493,7 @@ export default function Reports() {
         const chartSelectors = [
           { key: 'trend_line', selector: '#chart-trend', name: '趋势图' },
           { key: 'category_pie', selector: '#chart-category', name: '分类饼图' },
+          { key: 'priority_pie', selector: '#chart-priority', name: '优先级饼图' },
           { key: 'dept_bar', selector: '#chart-dept-bar', name: '部门柱状图' },
           { key: 'dept_pie', selector: '#chart-dept-pie', name: '部门饼图' },
           { key: 'rating_bar', selector: '#chart-rating', name: '评分柱状图' },
@@ -494,6 +511,7 @@ export default function Reports() {
           overview,
           trendData,
           categoryData,
+          priorityData,
           departmentChartData: deptTicketChartData,
           departmentPieData,
           departmentStats,
@@ -617,31 +635,31 @@ export default function Reports() {
         ))}
       </SimpleGrid>
 
-      <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={5} mb={6}>
-        <Card borderRadius="16px" id="chart-trend">
-          <CardBody>
-            <HStack mb={4}>
-              <Icon as={TrendingUp} color="brand.500" boxSize={5} />
-              <Heading size="sm">工单趋势图</Heading>
-            </HStack>
-            <Box h={300}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#EDF2F7" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#A0AEC0" />
-                  <YAxis tick={{ fontSize: 12 }} stroke="#A0AEC0" />
-                  <Tooltip
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                  <Legend />
-                  <Line type="monotone" dataKey="created" name="新增工单" stroke="#6C5CE7" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="closed" name="关闭工单" stroke="#00B894" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </Box>
-          </CardBody>
-        </Card>
+      <Card borderRadius="16px" id="chart-trend" mb={5}>
+        <CardBody>
+          <HStack mb={4}>
+            <Icon as={TrendingUp} color="brand.500" boxSize={5} />
+            <Heading size="sm">工单趋势图</Heading>
+          </HStack>
+          <Box h={300}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#EDF2F7" />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#A0AEC0" />
+                <YAxis tick={{ fontSize: 12 }} stroke="#A0AEC0" />
+                <Tooltip
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                />
+                <Legend />
+                <Line type="monotone" dataKey="created" name="新增工单" stroke="#6C5CE7" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="closed" name="关闭工单" stroke="#00B894" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </Box>
+        </CardBody>
+      </Card>
 
+      <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={5} mb={6}>
         <Card borderRadius="16px" id="chart-category">
           <CardBody>
             <HStack mb={4}>
@@ -662,6 +680,37 @@ export default function Reports() {
                   >
                     {categoryData.map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
+          </CardBody>
+        </Card>
+
+        <Card borderRadius="16px" id="chart-priority">
+          <CardBody>
+            <HStack mb={4}>
+              <Icon as={AlertCircle} color="brand.500" boxSize={5} />
+              <Heading size="sm">优先级分布图</Heading>
+            </HStack>
+            <Box h={300}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={priorityData}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={90}
+                    labelLine={false}
+                    label={renderCustomizedLabel}
+                    dataKey="value"
+                  >
+                    {priorityData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip
