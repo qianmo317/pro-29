@@ -25,7 +25,7 @@ import {
   Tooltip,
   IconButton,
 } from '@chakra-ui/react'
-import { ArrowLeft, BookOpen, ExternalLink, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, ExternalLink, Pencil, Trash2, FileText } from 'lucide-react'
 import { CATEGORY_LABELS } from '@/types'
 import { useTicketStore } from '@/store/ticketStore'
 
@@ -193,6 +193,7 @@ export default function KnowledgeDetail() {
   const toast = useToast()
   const getArticleById = useKnowledgeStore((s) => s.getArticleById)
   const deleteArticle = useKnowledgeStore((s) => s.deleteArticle)
+  const getRelatedArticles = useKnowledgeStore((s) => s.getRelatedArticles)
   const users = useUserStore((s) => s.users)
   const currentUser = useUserStore((s) => s.currentUser)
   const getTicketById = useTicketStore((s) => s.getTicketById)
@@ -203,6 +204,7 @@ export default function KnowledgeDetail() {
 
   const article = id ? getArticleById(id) : undefined
   const contentHTML = useMemo(() => (article ? renderMarkdownToHTML(article.content) : ''), [article])
+  const relatedArticles = useMemo(() => (id ? getRelatedArticles(id, 4) : []), [id, getRelatedArticles])
 
   const handleConfirmDelete = () => {
     if (!id) return
@@ -348,6 +350,62 @@ export default function KnowledgeDetail() {
               </HStack>
             </CardBody>
           </Card>
+        </Box>
+      )}
+
+      {relatedArticles.length > 0 && (
+        <Box mt={5}>
+          <HStack mb={3} align="center">
+            <Icon as={FileText} boxSize={4} color="brand.500" />
+            <Heading size="sm">相关文章</Heading>
+          </HStack>
+          <VStack align="stretch" spacing={3}>
+            {relatedArticles.map((ra) => {
+              const raAuthor = users.find((u) => u.id === ra.authorId)
+              return (
+                <Card
+                  key={ra.id}
+                  cursor="pointer"
+                  _hover={{ shadow: 'md', borderColor: 'brand.300' }}
+                  borderWidth="1px"
+                  borderColor="transparent"
+                  transition="all 0.2s ease"
+                  onClick={() => navigate(`/knowledge/${ra.id}`)}
+                >
+                  <CardBody py={4}>
+                    <VStack align="stretch" spacing={2}>
+                      <HStack justify="space-between" align="start">
+                        <Text
+                          fontWeight="600"
+                          color="gray.800"
+                          _hover={{ color: 'brand.600' }}
+                          transition="color 0.2s ease"
+                        >
+                          {ra.title}
+                        </Text>
+                        <Icon as={ExternalLink} boxSize={4} color="gray.300" flexShrink={0} ml={2} />
+                      </HStack>
+                      <HStack spacing={2} flexWrap="wrap">
+                        <Badge colorScheme="brand" variant="solid" size="sm">
+                          {CATEGORY_LABELS[ra.category]}
+                        </Badge>
+                        {ra.tags.slice(0, 3).map((tag) => (
+                          <Badge key={tag} colorScheme="brand" variant="subtle" size="sm">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </HStack>
+                      <HStack spacing={3} fontSize="xs" color="gray.400">
+                        <Text>{raAuthor?.name ?? '未知'}</Text>
+                        <Text>·</Text>
+                        <Text>{formatDate(ra.createdAt)}</Text>
+                      </HStack>
+                    </VStack>
+                  </CardBody>
+                </Card>
+              )
+            })}
+          </VStack>
         </Box>
       )}
 

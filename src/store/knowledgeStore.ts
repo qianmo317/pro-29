@@ -9,6 +9,7 @@ interface KnowledgeState {
   getArticleById: (id: string) => KnowledgeArticle | undefined
   searchArticles: (keyword: string) => KnowledgeArticle[]
   getArticlesByCategory: (category: string) => KnowledgeArticle[]
+  getRelatedArticles: (id: string, limit?: number) => KnowledgeArticle[]
   addArticle: (data: Omit<KnowledgeArticle, 'id' | 'createdAt' | 'updatedAt' | 'authorId'> & { authorId: string }) => KnowledgeArticle
   updateArticle: (id: string, data: Partial<Pick<KnowledgeArticle, 'title' | 'content' | 'category' | 'tags' | 'relatedTicketId'>>) => KnowledgeArticle | undefined
   deleteArticle: (id: string) => boolean
@@ -49,6 +50,26 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   getArticlesByCategory: (category) => {
     if (!category || category === 'all') return get().articles
     return get().articles.filter(a => a.category === category)
+  },
+
+  getRelatedArticles: (id, limit = 4) => {
+    const current = get().getArticleById(id)
+    if (!current) return []
+    const all = get().articles.filter(a => a.id !== id)
+    const scored = all.map(a => {
+      let score = 0
+      if (a.category === current.category) score += 3
+      const tagSet = new Set(current.tags)
+      for (const t of a.tags) {
+        if (tagSet.has(t)) score += 2
+      }
+      return { article: a, score }
+    })
+    return scored
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(s => s.article)
   },
 
   addArticle: (data) => {
